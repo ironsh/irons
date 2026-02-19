@@ -29,9 +29,8 @@ func NewClient(baseURL, apiKey string) *Client {
 
 // CreateRequest represents the request payload for creating a sandbox
 type CreateRequest struct {
-	PublicKey string            `json:"public_key"`
-	Secrets   map[string]string `json:"secrets"`
-	Name      string            `json:"name"`
+	PublicKey string `json:"public_key"`
+	Name      string `json:"name"`
 }
 
 // CreateResponse represents the response from creating a sandbox
@@ -96,10 +95,9 @@ type ErrorResponse struct {
 }
 
 // Create creates a new sandbox
-func (c *Client) Create(key []byte, secrets map[string]string, name string) (*CreateResponse, error) {
+func (c *Client) Create(key []byte, name string) (*CreateResponse, error) {
 	req := CreateRequest{
 		PublicKey: string(key),
-		Secrets:   secrets,
 		Name:      name,
 	}
 

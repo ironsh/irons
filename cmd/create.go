@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/ironcd/irons/api"
 	"github.com/spf13/cobra"
@@ -29,7 +28,6 @@ Examples:
   irons create --async --name my-sandbox`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		keyPath, _ := cmd.Flags().GetString("key")
-		secretStrings, _ := cmd.Flags().GetStringSlice("secret")
 		name, _ := cmd.Flags().GetString("name")
 		async, _ := cmd.Flags().GetBool("async")
 
@@ -37,16 +35,6 @@ Examples:
 		keyContent, err := os.ReadFile(keyPath)
 		if err != nil {
 			return fmt.Errorf("reading SSH key file %s: %w", keyPath, err)
-		}
-
-		// Parse secrets into map
-		secrets := make(map[string]string)
-		for _, secret := range secretStrings {
-			parts := strings.SplitN(secret, "=", 2)
-			if len(parts) != 2 {
-				return fmt.Errorf("invalid secret format '%s'. Expected KEY=VALUE", secret)
-			}
-			secrets[parts[0]] = parts[1]
 		}
 
 		// Create API client
@@ -58,7 +46,7 @@ Examples:
 		fmt.Printf("Creating sandbox '%s'...\n", name)
 
 		// Make API call
-		resp, err := client.Create(keyContent, secrets, name)
+		resp, err := client.Create(keyContent, name)
 		if err != nil {
 			return fmt.Errorf("creating sandbox: %w", err)
 		}
@@ -93,7 +81,6 @@ func init() {
 
 	// Define flags
 	createCmd.Flags().StringP("key", "k", defaultKeyPath, "SSH public key path")
-	createCmd.Flags().StringSliceP("secret", "s", []string{}, "Inject secret as KEY=VALUE (repeatable)")
 	createCmd.Flags().StringP("name", "n", "", "Name of the sandbox")
 	createCmd.Flags().Bool("async", false, "Return immediately without waiting for the sandbox to reach the running state")
 

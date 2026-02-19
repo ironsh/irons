@@ -57,12 +57,11 @@ Provision a new sandbox.
 irons create --name NAME [flags]
 ```
 
-| Flag             | Default             | Description                                                    |
-| ---------------- | ------------------- | -------------------------------------------------------------- |
-| `--name`, `-n`   | _(required)_        | Name to assign to the sandbox                                  |
-| `--key`, `-k`    | `~/.ssh/id_rsa.pub` | Path to an SSH public key                                      |
-| `--secret`, `-s` |                     | Inject a secret as `KEY=VALUE` (repeatable)                    |
-| `--async`        |                     | Return immediately without waiting for the sandbox to be ready |
+| Flag           | Default             | Description                                                    |
+| -------------- | ------------------- | -------------------------------------------------------------- |
+| `--name`, `-n` | _(required)_        | Name to assign to the sandbox                                  |
+| `--key`, `-k`  | `~/.ssh/id_rsa.pub` | Path to an SSH public key                                      |
+| `--async`      |                     | Return immediately without waiting for the sandbox to be ready |
 
 **Examples:**
 
@@ -70,11 +69,8 @@ irons create --name NAME [flags]
 # Basic creation
 irons create --name my-sandbox
 
-# Custom SSH key and injected secrets
-irons create --name my-sandbox \
-  --key ~/.ssh/agent.pub \
-  --secret GITHUB_TOKEN=ghp_... \
-  --secret DATABASE_URL=postgres://...
+# Custom SSH key
+irons create --name my-sandbox --key ~/.ssh/agent.pub
 
 # Fire-and-forget (don't wait for ready)
 irons create --async --name my-sandbox
@@ -234,12 +230,10 @@ These flags are available on every command:
 
 ## Typical Agent Workflow
 
-1. **Provision** a sandbox with the SSH key your agent will use and any secrets it needs:
+1. **Provision** a sandbox with the SSH key your agent will use:
 
    ```sh
-   irons create --name agent-run-42 \
-     --key ~/.ssh/agent.pub \
-     --secret OPENAI_API_KEY=sk-...
+   irons create --name agent-run-42 --key ~/.ssh/agent.pub
    ```
 
 2. **Lock down egress** to only what the agent should reach:
