@@ -1,6 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -21,11 +18,20 @@ var createCmd = &cobra.Command{
 	Long: `Create a new sandbox with the specified configuration.
 
 This command allows you to create a new sandbox with SSH key,
-secrets, and custom naming options.`,
+secrets, and custom naming options.
+
+By default the command waits until the sandbox is running before
+returning. Pass --async to return immediately after the create
+request is accepted.
+
+Examples:
+  irons create --name my-sandbox
+  irons create --async --name my-sandbox`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		keyPath, _ := cmd.Flags().GetString("key")
 		secretStrings, _ := cmd.Flags().GetStringSlice("secret")
 		name, _ := cmd.Flags().GetString("name")
+		async, _ := cmd.Flags().GetBool("async")
 
 		// Read SSH key file
 		keyContent, err := os.ReadFile(keyPath)
@@ -57,11 +63,21 @@ secrets, and custom naming options.`,
 			return fmt.Errorf("creating sandbox: %w", err)
 		}
 
-		// Show success
+		// Show initial response
 		fmt.Printf("✓ Sandbox created successfully!\n")
 		fmt.Printf("  ID: %s\n", resp.ID)
 		fmt.Printf("  Name: %s\n", resp.Name)
 		fmt.Printf("  Status: %s\n", resp.Status)
+
+		if async {
+			return nil
+		}
+
+		if err := waitForStatus(client, name, []string{"running"}); err != nil {
+			return err
+		}
+
+		fmt.Printf("✓ Sandbox '%s' is ready!\n", name)
 		return nil
 	},
 }
@@ -79,6 +95,7 @@ func init() {
 	createCmd.Flags().StringP("key", "k", defaultKeyPath, "SSH public key path")
 	createCmd.Flags().StringSliceP("secret", "s", []string{}, "Inject secret as KEY=VALUE (repeatable)")
 	createCmd.Flags().StringP("name", "n", "", "Name of the sandbox")
+	createCmd.Flags().Bool("async", false, "Return immediately without waiting for the sandbox to reach the running state")
 
 	// Mark required flags
 	createCmd.MarkFlagRequired("name")

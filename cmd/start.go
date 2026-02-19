@@ -1,6 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -20,12 +17,17 @@ var startCmd = &cobra.Command{
 This command powers on the specified sandbox and makes it
 available for use again.
 
+By default the command waits until the sandbox is running before
+returning. Pass --async to return immediately after the start
+request is accepted.
+
 Examples:
   irons start my-sandbox
-  irons start prod-sandbox`,
+  irons start --async my-sandbox`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
+		async, _ := cmd.Flags().GetBool("async")
 
 		// Create API client
 		apiURL := viper.GetString("api-url")
@@ -38,6 +40,15 @@ Examples:
 			return fmt.Errorf("starting sandbox: %w", err)
 		}
 
+		if async {
+			fmt.Printf("✓ Start request accepted for sandbox '%s'.\n", name)
+			return nil
+		}
+
+		if err := waitForStatus(client, name, []string{"running"}); err != nil {
+			return err
+		}
+
 		fmt.Printf("✓ Sandbox '%s' started successfully!\n", name)
 		return nil
 	},
@@ -45,4 +56,5 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(startCmd)
+	startCmd.Flags().Bool("async", false, "Return immediately without waiting for the sandbox to reach the running state")
 }

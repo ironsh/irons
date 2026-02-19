@@ -1,6 +1,3 @@
-/*
-Copyright © 2026 NAME HERE <EMAIL ADDRESS>
-*/
 package cmd
 
 import (
@@ -20,12 +17,17 @@ var stopCmd = &cobra.Command{
 This command powers off the specified sandbox. The sandbox
 can be restarted later with the start command.
 
+By default the command waits until the sandbox is stopped before
+returning. Pass --async to return immediately after the stop
+request is accepted.
+
 Examples:
   irons stop my-sandbox
-  irons stop prod-sandbox`,
+  irons stop --async my-sandbox`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name := args[0]
+		async, _ := cmd.Flags().GetBool("async")
 
 		// Create API client
 		apiURL := viper.GetString("api-url")
@@ -38,6 +40,15 @@ Examples:
 			return fmt.Errorf("stopping sandbox: %w", err)
 		}
 
+		if async {
+			fmt.Printf("✓ Stop request accepted for sandbox '%s'.\n", name)
+			return nil
+		}
+
+		if err := waitForStatus(client, name, []string{"stopped"}); err != nil {
+			return err
+		}
+
 		fmt.Printf("✓ Sandbox '%s' stopped successfully!\n", name)
 		return nil
 	},
@@ -45,4 +56,5 @@ Examples:
 
 func init() {
 	rootCmd.AddCommand(stopCmd)
+	stopCmd.Flags().Bool("async", false, "Return immediately without waiting for the sandbox to reach the stopped state")
 }
