@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/ironcd/irons/api"
 	"github.com/spf13/cobra"
@@ -41,8 +40,7 @@ Examples:
 				return fmt.Errorf("getting sandbox status: %w", err)
 			}
 
-			current := strings.ToLower(statusResp.Status)
-			if strings.Contains(current, "running") || strings.Contains(current, "ready") {
+			if statusResp.Status == "running" || statusResp.Status == "ready" {
 				fmt.Printf("Stopping sandbox '%s' before destroying...\n", name)
 
 				if err := client.Stop(name); err != nil {
@@ -61,7 +59,7 @@ Examples:
 		fmt.Printf("Destroying sandbox '%s'...\n", name)
 
 		// Make API call
-		if _, err := client.Destroy(name); err != nil {
+		if err := client.Destroy(name); err != nil {
 			return fmt.Errorf("destroying sandbox: %w", err)
 		}
 

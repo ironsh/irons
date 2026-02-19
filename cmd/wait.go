@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -29,20 +30,16 @@ func waitForStatus(client *api.Client, name string, expected []string) error {
 			continue
 		}
 
-		current := strings.ToLower(resp.Status)
-
 		// Check whether we've reached a terminal error state.
-		if strings.Contains(current, "failed") {
+		if resp.Status == "error" {
 			fmt.Println()
 			return fmt.Errorf("sandbox '%s' entered error state: %s", name, resp.Status)
 		}
 
 		// Check whether we've reached the desired state.
-		for _, want := range expected {
-			if strings.Contains(current, strings.ToLower(want)) {
-				fmt.Println()
-				return nil
-			}
+		if slices.Contains(expected, resp.Status) {
+			fmt.Println()
+			return nil
 		}
 
 		fmt.Print(".")

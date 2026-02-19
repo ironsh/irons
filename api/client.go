@@ -69,19 +69,19 @@ type EgressAllowRequest struct {
 	Domain string `json:"domain"`
 }
 
-// EgressAllowResponse represents the response from allowing egress
-type EgressAllowResponse struct {
-	Domain string `json:"domain"`
-}
-
 // EgressDenyRequest represents the request payload for denying egress to a domain
 type EgressDenyRequest struct {
 	Domain string `json:"domain"`
 }
 
-// EgressDenyResponse represents the response from denying egress
-type EgressDenyResponse struct {
-	Domain string `json:"domain"`
+// EgressModeRequest represents the request payload for setting the egress mode
+type EgressModeRequest struct {
+	Mode string `json:"mode"`
+}
+
+// EgressModeResponse represents the response from getting the egress mode
+type EgressModeResponse struct {
+	Mode string `json:"mode"`
 }
 
 // EgressListResponse represents the response from listing egress rules
@@ -139,20 +139,15 @@ func (c *Client) SSH(name string) (*SSHResponse, error) {
 }
 
 // Destroy destroys a sandbox
-func (c *Client) Destroy(name string) (*DestroyResponse, error) {
+func (c *Client) Destroy(name string) error {
 	url := fmt.Sprintf("/sandboxes/%s", name)
 
-	body, err := c.makeRequest("DELETE", url, nil)
+	_, err := c.makeRequest("DELETE", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to destroy sandbox: %w", err)
+		return fmt.Errorf("failed to destroy sandbox: %w", err)
 	}
 
-	var destroyResp DestroyResponse
-	if err := json.Unmarshal(body, &destroyResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &destroyResp, nil
+	return nil
 }
 
 // Status gets the status of a sandbox
@@ -173,8 +168,8 @@ func (c *Client) Status(name string) (*StatusResponse, error) {
 }
 
 // EgressAllow allows egress traffic to a domain for a sandbox
-func (c *Client) EgressAllow(name, domain string) (*EgressAllowResponse, error) {
-	url := fmt.Sprintf("/sandboxes/%s/egress/allow", name)
+func (c *Client) EgressAllow(domain string) error {
+	url := "/egress/allow"
 
 	req := EgressAllowRequest{
 		Domain: domain,
@@ -182,25 +177,20 @@ func (c *Client) EgressAllow(name, domain string) (*EgressAllowResponse, error) 
 
 	reqBody, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	body, err := c.makeRequest("POST", url, bytes.NewReader(reqBody))
+	_, err = c.makeRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to allow egress: %w", err)
+		return fmt.Errorf("failed to allow egress: %w", err)
 	}
 
-	var allowResp EgressAllowResponse
-	if err := json.Unmarshal(body, &allowResp); err != nil {
-		return nil, fmt.Errorf("failed to decode response: %w", err)
-	}
-
-	return &allowResp, nil
+	return nil
 }
 
 // EgressDeny denies egress traffic to a domain for a sandbox
-func (c *Client) EgressDeny(name, domain string) (*EgressDenyResponse, error) {
-	url := fmt.Sprintf("/sandboxes/%s/egress/deny", name)
+func (c *Client) EgressDeny(domain string) error {
+	url := "/egress/deny"
 
 	req := EgressDenyRequest{
 		Domain: domain,
@@ -208,25 +198,52 @@ func (c *Client) EgressDeny(name, domain string) (*EgressDenyResponse, error) {
 
 	reqBody, err := json.Marshal(req)
 	if err != nil {
-		return nil, fmt.Errorf("failed to marshal request: %w", err)
+		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	body, err := c.makeRequest("POST", url, bytes.NewReader(reqBody))
+	_, err = c.makeRequest("POST", url, bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to deny egress: %w", err)
+		return fmt.Errorf("failed to deny egress: %w", err)
 	}
 
-	var denyResp EgressDenyResponse
-	if err := json.Unmarshal(body, &denyResp); err != nil {
+	return nil
+}
+
+// EgressGetMode gets the current egress mode for the account
+func (c *Client) EgressGetMode() (*EgressModeResponse, error) {
+	body, err := c.makeRequest("GET", "/egress/mode", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get egress mode: %w", err)
+	}
+
+	var modeResp EgressModeResponse
+	if err := json.Unmarshal(body, &modeResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &denyResp, nil
+	return &modeResp, nil
 }
 
-// EgressList lists all egress rules for a sandbox
-func (c *Client) EgressList(name string) (*EgressListResponse, error) {
-	url := fmt.Sprintf("/sandboxes/%s/egress", name)
+// EgressSetMode sets the egress mode for the account
+func (c *Client) EgressSetMode(mode string) error {
+	req := EgressModeRequest{Mode: mode}
+
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	_, err = c.makeRequest("PUT", "/egress/mode", bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to set egress mode: %w", err)
+	}
+
+	return nil
+}
+
+// EgressList lists all egress rules for the account
+func (c *Client) EgressList() (*EgressListResponse, error) {
+	url := "/egress"
 
 	body, err := c.makeRequest("GET", url, nil)
 	if err != nil {
