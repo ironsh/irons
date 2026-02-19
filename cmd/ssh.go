@@ -12,15 +12,17 @@ import (
 
 // sshCmd represents the ssh command
 var sshCmd = &cobra.Command{
-	Use:   "ssh",
+	Use:   "ssh NAME",
 	Short: "SSH into a sandbox",
 	Long: `SSH into a sandbox to execute commands or open an interactive session.
 
 This command allows you to connect to a specific sandbox via SSH
 with the specified configuration and credentials.`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name, _ := cmd.Flags().GetString("name")
+		name := args[0]
 		showCommand, _ := cmd.Flags().GetBool("command")
+		strictHostKeys, _ := cmd.Flags().GetBool("strict-hostkeys")
 
 		// Create API client
 		apiURL := viper.GetString("api-url")
@@ -38,8 +40,17 @@ with the specified configuration and credentials.`,
 		// Build SSH command
 		sshArgs := []string{
 			"-p", fmt.Sprintf("%d", resp.Port),
-			fmt.Sprintf("%s@%s", resp.Username, resp.Host),
 		}
+
+		if !strictHostKeys {
+			sshArgs = append(sshArgs,
+				"-o", "StrictHostKeyChecking=no",
+				"-o", "UserKnownHostsFile=/dev/null",
+				"-o", "LogLevel=ERROR",
+			)
+		}
+
+		sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", resp.Username, resp.Host))
 
 		// If there's a specific command, add it
 		if resp.Command != "" {
@@ -77,9 +88,6 @@ func init() {
 	rootCmd.AddCommand(sshCmd)
 
 	// Define flags
-	sshCmd.Flags().StringP("name", "n", "", "Name of the sandbox")
 	sshCmd.Flags().BoolP("command", "c", false, "Output SSH command instead of executing it")
-
-	// Mark required flags
-	sshCmd.MarkFlagRequired("name")
+	sshCmd.Flags().Bool("strict-hostkeys", false, "Enable strict host key checking (disabled by default)")
 }
