@@ -42,7 +42,7 @@ Examples:
 			}
 
 			current := strings.ToLower(statusResp.Status)
-			if strings.Contains(current, "running") || strings.Contains(current, "starting") {
+			if strings.Contains(current, "running") || strings.Contains(current, "ready") {
 				fmt.Printf("Stopping sandbox '%s' before destroying...\n", name)
 
 				if err := client.Stop(name); err != nil {

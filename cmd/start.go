@@ -45,7 +45,7 @@ Examples:
 			return nil
 		}
 
-		if err := waitForStatus(client, name, []string{"running"}); err != nil {
+		if err := waitForStatus(client, name, []string{"ready"}); err != nil {
 			return err
 		}
 
