@@ -2,6 +2,8 @@
 
 `irons` is a CLI tool for spinning up egress-secured cloud VMs (sandboxes) designed for use with AI agents. It lets you create isolated, SSH-accessible environments with fine-grained control over outbound network traffic — so you can give an agent a real machine to work in without giving it unfettered internet access.
 
+## Get Access
+
 **We're currently in early access.** We're keeping the number of teams small so every sandbox boots fast and stays fast.
 
 [Schedule a call →](https://cal.com/matthew-slipper-ironcd/15min)
