@@ -12,13 +12,13 @@ We'll get you API keys and have you spinning up secure sandboxes in 15 minutes.
 
 ## How It Works
 
-Each sandbox is a cloud VM provisioned through the [IronCD](https://ironcd.dev) API. Egress rules are enforced at the network level, meaning you can allowlist only the domains an agent needs to reach (e.g. a package registry, an internal API) and block everything else. Rules can also be set to `warn` mode, which logs violations without blocking them — useful for auditing before locking things down.
+Each sandbox is a cloud VM provisioned through the Iron.sh API. Egress rules are enforced at the network level, meaning you can allowlist only the domains an agent needs to reach (e.g. a package registry, an internal API) and block everything else. Rules can also be set to `warn` mode, which logs violations without blocking them — useful for auditing before locking things down.
 
 ## Installation
 
 ### Download Binary
 
-Pre-built binaries for macOS, Linux, and Windows are available on the [GitHub Releases](https://github.com/ironcd/irons/releases/latest) page.
+Pre-built binaries for macOS, Linux, and Windows are available on the [GitHub Releases](https://github.com/ironsh/irons/releases/latest) page.
 
 ### From Source
 
