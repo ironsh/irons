@@ -2,6 +2,12 @@
 
 `irons` is a CLI tool for spinning up egress-secured cloud VMs (sandboxes) designed for use with AI agents. It lets you create isolated, SSH-accessible environments with fine-grained control over outbound network traffic — so you can give an agent a real machine to work in without giving it unfettered internet access.
 
+**We're currently in early access.** We're keeping the number of teams small so every sandbox boots fast and stays fast.
+
+[Schedule a call →](https://cal.com/matthew-slipper-ironcd/15min)
+
+We'll get you API keys and have you spinning up secure sandboxes in 15 minutes.
+
 ## How It Works
 
 Each sandbox is a cloud VM provisioned through the [IronCD](https://ironcd.dev) API. Egress rules are enforced at the network level, meaning you can allowlist only the domains an agent needs to reach (e.g. a package registry, an internal API) and block everything else. Rules can also be set to `warn` mode, which logs violations without blocking them — useful for auditing before locking things down.
