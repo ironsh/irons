@@ -5,7 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ironcd/irons/api"
+	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )

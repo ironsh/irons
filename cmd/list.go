@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ironcd/irons/api"
+	"github.com/ironsh/irons/api"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"

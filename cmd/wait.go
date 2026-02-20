@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ironcd/irons/api"
+	"github.com/ironsh/irons/api"
 )
 
 const (

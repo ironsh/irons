@@ -53,7 +53,7 @@ changelog:
 
 release:
   github:
-    owner: ironcd
+    owner: ironsh
     name: irons
   draft: true
   prerelease: auto
