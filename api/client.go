@@ -89,6 +89,22 @@ type EgressListResponse struct {
 	DeniedDomains  []string `json:"denied_domains"`
 }
 
+// EgressAuditEvent represents a single egress audit log entry.
+type EgressAuditEvent struct {
+	Type        string    `json:"type"`
+	Timestamp   time.Time `json:"timestamp"`
+	SandboxName string    `json:"sandbox_name"`
+	Host        string    `json:"host"`
+	Allowed     bool      `json:"allowed"`
+	Mode        string    `json:"mode,omitempty"`
+}
+
+// EgressAuditResponse is the paginated response for GET /sandboxes/{name}/audit/egress.
+type EgressAuditResponse struct {
+	Events    []EgressAuditEvent `json:"events"`
+	PageToken int64              `json:"page_token,omitempty"`
+}
+
 // ErrorResponse represents an error response from the API
 type ErrorResponse struct {
 	Error string `json:"error"`
@@ -278,6 +294,28 @@ func (c *Client) Stop(name string) error {
 	}
 
 	return nil
+}
+
+// AuditEgress fetches egress audit events for a sandbox. Pass pageToken=0 for
+// the first request; subsequent requests should pass the PageToken from the
+// previous response to receive only newly-appended events.
+func (c *Client) AuditEgress(name string, pageToken int64) (*EgressAuditResponse, error) {
+	path := fmt.Sprintf("/sandboxes/%s/audit/egress", name)
+	if pageToken > 0 {
+		path = fmt.Sprintf("%s?pageToken=%d", path, pageToken)
+	}
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch egress audit log: %w", err)
+	}
+
+	var auditResp EgressAuditResponse
+	if err := json.Unmarshal(body, &auditResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &auditResp, nil
 }
 
 // makeRequest makes an HTTP request with common headers and error handling
