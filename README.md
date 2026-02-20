@@ -219,6 +219,58 @@ irons egress mode warn
 
 ---
 
+### `audit`
+
+Inspect the history of outbound network connection attempts for a sandbox.
+
+#### `audit egress NAME`
+
+Print the egress audit log for a sandbox — every outbound connection attempt, whether it was allowed or denied, and which mode was in effect at the time.
+
+```
+irons audit egress NAME [--follow]
+```
+
+| Flag           | Description                                     |
+| -------------- | ----------------------------------------------- |
+| `--follow, -f` | Continuously poll for new events (like tail -f) |
+
+Each line of output contains four space-separated fields:
+
+```
+TIMESTAMP  VERDICT  HOST  (mode: MODE)
+```
+
+| Field       | Description                                                             |
+| ----------- | ----------------------------------------------------------------------- |
+| `TIMESTAMP` | RFC 3339 timestamp (local time) of the connection attempt               |
+| `VERDICT`   | `ALLOWED` if the connection was permitted, `DENIED` if it was blocked   |
+| `HOST`      | The destination hostname                                                |
+| `MODE`      | The egress mode active at the time: `warn` (log only) or `deny` (block) |
+
+**Example output:**
+
+```sh
+2026-02-19T16:41:54-07:00  ALLOWED  changelogs.ubuntu.com  (mode: warn)
+2026-02-19T16:42:00-07:00  ALLOWED  example.com  (mode: warn)
+2026-02-19T16:42:09-07:00  ALLOWED  example2.com  (mode: warn)
+2026-02-19T16:42:26-07:00  DENIED   example2.com  (mode: deny)
+```
+
+**Examples:**
+
+```sh
+# Print the full egress audit log for a sandbox
+irons audit egress my-sandbox
+
+# Tail the log and print new events as they arrive
+irons audit egress my-sandbox --follow
+```
+
+> **Tip:** Run `irons audit egress --follow` while your egress mode is set to `warn` to observe which domains your agent is reaching before switching to `deny`. This makes it easy to build a precise allowlist without trial and error.
+
+---
+
 ## Global Flags
 
 These flags are available on every command:
