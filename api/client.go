@@ -370,7 +370,6 @@ func (c *Client) makeRequest(method, path string, body io.Reader) ([]byte, error
 
 	// Check for HTTP errors
 	if resp.StatusCode >= 400 {
-		fmt.Println(string(respBody), resp.StatusCode)
 		// Try to parse as JSON error response
 		var errResp ErrorResponse
 		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error != "" {
