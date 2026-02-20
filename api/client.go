@@ -63,6 +63,11 @@ type DestroyResponse struct {
 	Name string `json:"name"`
 }
 
+// ListSandboxesResponse represents the response from listing all sandboxes.
+type ListSandboxesResponse struct {
+	Sandboxes []StatusResponse `json:"sandboxes"`
+}
+
 // EgressAllowRequest represents the request payload for allowing egress to a domain
 type EgressAllowRequest struct {
 	Domain string `json:"domain"`
@@ -162,6 +167,21 @@ func (c *Client) Destroy(name string) error {
 	}
 
 	return nil
+}
+
+// List lists all sandboxes
+func (c *Client) List() (*ListSandboxesResponse, error) {
+	body, err := c.makeRequest("GET", "/sandboxes", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list sandboxes: %w", err)
+	}
+
+	var listResp ListSandboxesResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
 }
 
 // Status gets the status of a sandbox
