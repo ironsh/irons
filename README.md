@@ -16,16 +16,31 @@ Each sandbox is a cloud VM provisioned through the Iron.sh API. Egress rules are
 
 ## Installation
 
+### Install Script (recommended)
+
+The quickest way to install `irons` on macOS or Linux. Downloads the latest release, validates its SHA-256 checksum, and installs the binary to an appropriate location on your `$PATH`:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ironsh/irons/main/install.sh | sh
+```
+
+The script will:
+
+1. Detect your OS and architecture
+2. Download the correct binary from the [latest GitHub release](https://github.com/ironsh/irons/releases/latest)
+3. Verify the SHA-256 checksum against the release's checksums file
+4. Install to `/usr/local/bin` (or `~/.local/bin` if that isn't writable), prompting for `sudo` only if needed
+
 ### Download Binary
 
-Pre-built binaries for macOS, Linux, and Windows are available on the [GitHub Releases](https://github.com/ironsh/irons/releases/latest) page.
+Pre-built binaries for macOS and Linux are available on the [GitHub Releases](https://github.com/ironsh/irons/releases/latest) page.
 
 ### From Source
 
 Requires Go 1.24+.
 
 ```sh
-git clone https://github.com/ironcd/irons.git
+git clone https://github.com/ironsh/irons.git
 cd irons
 just build        # or: go build -o bin/irons .
 ```
@@ -33,7 +48,7 @@ just build        # or: go build -o bin/irons .
 Add `bin/irons` to your `$PATH`, or install directly:
 
 ```sh
-go install github.com/ironcd/irons@latest
+go install github.com/ironsh/irons@latest
 ```
 
 ## Authentication
@@ -44,7 +59,7 @@ All commands require an API key. Set it via the `IRONS_API_KEY` environment vari
 export IRONS_API_KEY=your-api-key
 ```
 
-By default, `irons` talks to `https://elrond.ironcd.dev`. Override this with `IRONS_API_URL` or `--api-url`.
+By default, `irons` talks to `https://elrond.ironsh.dev`. Override this with `IRONS_API_URL` or `--api-url`.
 
 ## Quick Start
 
@@ -289,7 +304,7 @@ These flags are available on every command:
 | Flag        | Env var         | Default                     | Description                |
 | ----------- | --------------- | --------------------------- | -------------------------- |
 | `--api-key` | `IRONS_API_KEY` |                             | API key for authentication |
-| `--api-url` | `IRONS_API_URL` | `https://elrond.ironcd.dev` | API endpoint URL           |
+| `--api-url` | `IRONS_API_URL` | `https://elrond.ironsh.dev` | API endpoint URL           |
 
 ## Typical Agent Workflow
 
