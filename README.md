@@ -21,15 +21,8 @@ Each sandbox is a cloud VM provisioned through the Iron.sh API. Egress rules are
 The quickest way to install `irons` on macOS or Linux. Downloads the latest release, validates its SHA-256 checksum, and installs the binary to an appropriate location on your `$PATH`:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ironsh/irons/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/ironsh/irons/main/install.sh | bash
 ```
-
-The script will:
-
-1. Detect your OS and architecture
-2. Download the correct binary from the [latest GitHub release](https://github.com/ironsh/irons/releases/latest)
-3. Verify the SHA-256 checksum against the release's checksums file
-4. Install to `/usr/local/bin` (or `~/.local/bin` if that isn't writable), prompting for `sudo` only if needed
 
 ### Download Binary
 
