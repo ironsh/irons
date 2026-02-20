@@ -52,7 +52,7 @@ All commands require an API key. Set it via the `IRONS_API_KEY` environment vari
 export IRONS_API_KEY=your-api-key
 ```
 
-By default, `irons` talks to `https://elrond.ironsh.dev`. Override this with `IRONS_API_URL` or `--api-url`.
+By default, `irons` talks to `https://elrond.ironcd.com`. Override this with `IRONS_API_URL` or `--api-url`.
 
 ## Quick Start
 
@@ -297,7 +297,7 @@ These flags are available on every command:
 | Flag        | Env var         | Default                     | Description                |
 | ----------- | --------------- | --------------------------- | -------------------------- |
 | `--api-key` | `IRONS_API_KEY` |                             | API key for authentication |
-| `--api-url` | `IRONS_API_URL` | `https://elrond.ironsh.dev` | API endpoint URL           |
+| `--api-url` | `IRONS_API_URL` | `https://elrond.ironcd.com` | API endpoint URL           |
 
 ## Typical Agent Workflow
 
