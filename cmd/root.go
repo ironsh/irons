@@ -13,13 +13,16 @@ const DefaultAPIURL = "https://elrond.ironcd.dev"
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
 	Use:   "irons",
-	Short: "A brief description of your application",
-	Long: `A longer description that spans multiple lines and likely contains
-examples and usage of using your application. For example:
+	Short: "Spin up egress-secured cloud VMs for AI agents",
+	Long: `irons is a CLI tool for spinning up egress-secured cloud VMs (sandboxes) designed for use with AI agents.
 
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
+It lets you create isolated, SSH-accessible environments with fine-grained control over outbound network
+traffic — so you can give an agent a real machine to work in without giving it unfettered internet access.
+
+Each sandbox is a cloud VM provisioned through the IronCD API. Egress rules are enforced at the network
+level, meaning you can allowlist only the domains an agent needs to reach (e.g. a package registry, an
+internal API) and block everything else. Rules can also be set to warn mode, which logs violations without
+blocking them — useful for auditing before locking things down.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Skip validation for help command and root command without subcommands
 		if cmd.Name() == "help" || cmd.Name() == "irons" && len(args) == 0 {

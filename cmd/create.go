@@ -12,7 +12,7 @@ import (
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
-	Use:   "create",
+	Use:   "create <name>",
 	Short: "Create a new sandbox",
 	Long: `Create a new sandbox with the specified configuration.
 
@@ -24,11 +24,12 @@ returning. Pass --async to return immediately after the create
 request is accepted.
 
 Examples:
-  irons create --name my-sandbox
-  irons create --async --name my-sandbox`,
+  irons create my-sandbox
+  irons create --async my-sandbox`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		keyPath, _ := cmd.Flags().GetString("key")
-		name, _ := cmd.Flags().GetString("name")
+		name := args[0]
 		async, _ := cmd.Flags().GetBool("async")
 
 		// Read SSH key file
@@ -81,9 +82,5 @@ func init() {
 
 	// Define flags
 	createCmd.Flags().StringP("key", "k", defaultKeyPath, "SSH public key path")
-	createCmd.Flags().StringP("name", "n", "", "Name of the sandbox")
 	createCmd.Flags().Bool("async", false, "Return immediately without waiting for the sandbox to reach the running state")
-
-	// Mark required flags
-	createCmd.MarkFlagRequired("name")
 }

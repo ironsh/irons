@@ -38,7 +38,7 @@ By default, `irons` talks to `https://elrond.ironcd.dev`. Override this with `IR
 
 ```sh
 # Create a sandbox and wait until it's ready
-irons create --name my-agent-sandbox
+irons create my-agent-sandbox
 
 # SSH in
 irons ssh my-agent-sandbox
@@ -54,26 +54,25 @@ irons destroy my-agent-sandbox
 Provision a new sandbox.
 
 ```
-irons create --name NAME [flags]
+irons create NAME [flags]
 ```
 
-| Flag           | Default             | Description                                                    |
-| -------------- | ------------------- | -------------------------------------------------------------- |
-| `--name`, `-n` | _(required)_        | Name to assign to the sandbox                                  |
-| `--key`, `-k`  | `~/.ssh/id_rsa.pub` | Path to an SSH public key                                      |
-| `--async`      |                     | Return immediately without waiting for the sandbox to be ready |
+| Flag          | Default             | Description                                                    |
+| ------------- | ------------------- | -------------------------------------------------------------- |
+| `--key`, `-k` | `~/.ssh/id_rsa.pub` | Path to an SSH public key                                      |
+| `--async`     |                     | Return immediately without waiting for the sandbox to be ready |
 
 **Examples:**
 
 ```sh
 # Basic creation
-irons create --name my-sandbox
+irons create my-sandbox
 
 # Custom SSH key
-irons create --name my-sandbox --key ~/.ssh/agent.pub
+irons create my-sandbox --key ~/.ssh/agent.pub
 
 # Fire-and-forget (don't wait for ready)
-irons create --async --name my-sandbox
+irons create --async my-sandbox
 ```
 
 ---
@@ -285,7 +284,7 @@ These flags are available on every command:
 1. **Provision** a sandbox with the SSH key your agent will use:
 
    ```sh
-   irons create --name agent-run-42 --key ~/.ssh/agent.pub
+   irons create agent-run-42 --key ~/.ssh/agent.pub
    ```
 
 2. **Lock down egress** to only what the agent should reach:
