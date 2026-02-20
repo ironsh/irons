@@ -16,6 +16,10 @@ Each sandbox is a cloud VM provisioned through the [IronCD](https://ironcd.dev) 
 
 ## Installation
 
+### Download Binary
+
+Pre-built binaries for macOS, Linux, and Windows are available on the [GitHub Releases](https://github.com/ironcd/irons/releases/latest) page.
+
 ### From Source
 
 Requires Go 1.24+.
