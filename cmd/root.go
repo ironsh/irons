@@ -37,7 +37,8 @@ blocking them — useful for auditing before locking things down.`,
 	},
 }
 
-func Execute() {
+func Execute(version string) {
+	rootCmd.Version = version
 	err := rootCmd.Execute()
 	if err != nil {
 		os.Exit(1)

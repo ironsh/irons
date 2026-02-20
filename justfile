@@ -10,6 +10,7 @@ run *ARGS:
 # Clean build artifacts
 clean:
     rm -rf bin/
+    rm -rf dist/
 
 # Install dependencies
 deps:
