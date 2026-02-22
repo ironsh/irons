@@ -186,6 +186,36 @@ irons ssh --command my-sandbox
 
 ---
 
+### `forward`
+
+Forward a port from a sandbox to your local machine via SSH tunneling.
+
+```
+irons forward NAME [flags]
+```
+
+| Flag                  | Default                 | Description                                           |
+| --------------------- | ----------------------- | ----------------------------------------------------- |
+| `--remote-port`, `-r` | (required)              | Remote port on the sandbox to forward                 |
+| `--local-port`, `-l`  | same as `--remote-port` | Local port to listen on                               |
+| `--command`, `-c`     |                         | Print the SSH command instead of executing it         |
+| `--strict-hostkeys`   |                         | Enable strict host key checking (disabled by default) |
+
+**Examples:**
+
+```sh
+# Forward sandbox port 3000 to localhost:3000
+irons forward my-sandbox --remote-port 3000
+
+# Forward sandbox port 3000 to a different local port
+irons forward my-sandbox --remote-port 3000 --local-port 8080
+
+# Print the SSH command instead of running it
+irons forward my-sandbox --remote-port 3000 --command
+```
+
+---
+
 ### `egress`
 
 Manage outbound network rules for sandboxes.
