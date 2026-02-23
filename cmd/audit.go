@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -91,19 +93,46 @@ Examples:
 	},
 }
 
+var (
+	verdictAllow = color.New(color.FgGreen, color.Bold).SprintfFunc()
+	verdictWarn  = color.New(color.FgYellow, color.Bold).SprintfFunc()
+	verdictDeny  = color.New(color.FgRed, color.Bold).SprintfFunc()
+)
+
 func printEgressEvent(ev api.EgressAuditEvent) {
-	verdict := "DENIED"
-	if ev.Allowed {
-		verdict = "ALLOWED"
+	verdict := strings.ToLower(ev.Verdict)
+	if verdict == "" {
+		if ev.Allowed {
+			verdict = "allowed"
+		} else {
+			verdict = "blocked"
+		}
+	}
+
+	var label string
+	switch verdict {
+	case "allowed":
+		label = verdictAllow("%-5s", "ALLOW")
+	case "warn":
+		label = verdictWarn("%-5s", "WARN")
+	default:
+		label = verdictDeny("%-5s", "DENY")
 	}
 
 	ts := ev.Timestamp.Local().Format(time.RFC3339)
 
-	if ev.Mode != "" {
-		fmt.Printf("%s  %-7s  %s  (mode: %s)\n", ts, verdict, ev.Host, ev.Mode)
-	} else {
-		fmt.Printf("%s  %-7s  %s\n", ts, verdict, ev.Host)
+	var parts []string
+	parts = append(parts, ts)
+	parts = append(parts, label)
+	if ev.Protocol != "" {
+		parts = append(parts, fmt.Sprintf("%-5s", ev.Protocol))
 	}
+	parts = append(parts, ev.Host)
+	if ev.Mode != "" {
+		parts = append(parts, fmt.Sprintf("(mode: %s)", ev.Mode))
+	}
+
+	fmt.Println(strings.Join(parts, "  "))
 }
 
 func init() {

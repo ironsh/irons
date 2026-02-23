@@ -100,8 +100,19 @@ type EgressAuditEvent struct {
 	Timestamp   time.Time `json:"timestamp"`
 	SandboxName string    `json:"sandbox_name"`
 	Host        string    `json:"host"`
-	Allowed     bool      `json:"allowed"`
-	Mode        string    `json:"mode,omitempty"`
+	// Protocol is the network protocol inferred from the request
+	// (e.g. "http", "tls", "tcp"). Empty when it cannot be determined.
+	Protocol string `json:"protocol,omitempty"`
+	// Allowed reports whether the request was ultimately permitted.
+	// Use Verdict for a more precise description of the outcome.
+	Allowed bool `json:"allowed"`
+	// Verdict gives the precise outcome of the check:
+	//   - "allowed"  – host was in the allowlist.
+	//   - "blocked"  – host was not in the allowlist and the request was denied.
+	//   - "warn"     – host was not in the allowlist but was permitted because
+	//                  the egress mode is "warn".
+	Verdict string `json:"verdict,omitempty"`
+	Mode    string `json:"mode,omitempty"`
 }
 
 // EgressAuditResponse is the paginated response for GET /sandboxes/{name}/audit/egress.
