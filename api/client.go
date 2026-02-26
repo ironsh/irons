@@ -121,6 +121,19 @@ type EgressAuditResponse struct {
 	PageToken int64              `json:"page_token,omitempty"`
 }
 
+// DeviceCodeResponse represents the response from POST /login/device/code
+type DeviceCodeResponse struct {
+	Code            string    `json:"code"`
+	VerificationURI string    `json:"verification_uri"`
+	ExpiresAt       time.Time `json:"expires_at"`
+}
+
+// PollResponse represents the response from GET /login/device/poll
+type PollResponse struct {
+	Status string `json:"status"`
+	Token  string `json:"token,omitempty"`
+}
+
 // ErrorResponse represents an error response from the API
 type ErrorResponse struct {
 	Error string `json:"error"`
@@ -347,6 +360,38 @@ func (c *Client) AuditEgress(name string, pageToken int64) (*EgressAuditResponse
 	}
 
 	return &auditResp, nil
+}
+
+// DeviceCode requests a new device code to begin the device authorization flow.
+func (c *Client) DeviceCode() (*DeviceCodeResponse, error) {
+	body, err := c.makeRequest("POST", "/login/device/code", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to request device code: %w", err)
+	}
+
+	var resp DeviceCodeResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode device code response: %w", err)
+	}
+
+	return &resp, nil
+}
+
+// PollDevice polls the device authorization endpoint for the given code.
+func (c *Client) PollDevice(code string) (*PollResponse, error) {
+	path := fmt.Sprintf("/login/device/poll?code=%s", code)
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to poll device auth: %w", err)
+	}
+
+	var resp PollResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, fmt.Errorf("failed to decode poll response: %w", err)
+	}
+
+	return &resp, nil
 }
 
 // makeRequest makes an HTTP request with common headers and error handling

@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
+	"os/signal"
+	"path/filepath"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -24,22 +28,25 @@ level, meaning you can allowlist only the domains an agent needs to reach (e.g. 
 internal API) and block everything else. Rules can also be set to warn mode, which logs violations without
 blocking them — useful for auditing before locking things down.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
-		// Skip validation for help command and root command without subcommands
-		if cmd.Name() == "help" || cmd.Name() == "irons" && len(args) == 0 {
+		// Skip validation for commands that don't need an API key.
+		if cmd.Name() == "help" || cmd.Name() == "login" || (cmd.Name() == "irons" && len(args) == 0) {
 			return
 		}
 
 		apiKey := viper.GetString("api-key")
 		if apiKey == "" {
-			fmt.Fprintf(os.Stderr, "Error: API key is required. Set it with --api-key flag or IRONS_API_KEY environment variable.\n")
+			fmt.Fprintf(os.Stderr, "Error: API key is required. Run `irons login`, set --api-key, or set IRONS_API_KEY.\n")
 			os.Exit(1)
 		}
 	},
 }
 
 func Execute(version string) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	rootCmd.Version = version
-	err := rootCmd.Execute()
+	err := rootCmd.ExecuteContext(ctx)
 	if err != nil {
 		os.Exit(1)
 	}
@@ -57,6 +64,30 @@ func init() {
 	// Set environment variable names
 	viper.BindEnv("api-url", "IRONS_API_URL")
 	viper.BindEnv("api-key", "IRONS_API_KEY")
+
+	// Load config file from ~/.config/irons/config.yml (or $XDG_CONFIG_HOME).
+	// The key in the YAML file is "api_key", which we map to viper's "api-key".
+	base := os.Getenv("XDG_CONFIG_HOME")
+	if base == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			base = filepath.Join(home, ".config")
+		}
+	}
+	if base != "" {
+		viper.SetConfigName("config")
+		viper.SetConfigType("yaml")
+		viper.AddConfigPath(filepath.Join(base, "irons"))
+		// Ignore "file not found" errors — the config is optional.
+		_ = viper.ReadInConfig()
+
+		// Bridge the yaml key "api_key" into viper's "api-key" so that
+		// flag/env/file all resolve through the same viper.GetString call.
+		if viper.GetString("api-key") == "" {
+			if saved := viper.GetString("api_key"); saved != "" {
+				viper.Set("api-key", saved)
+			}
+		}
+	}
 
 	// Cobra also supports local flags which will only run
 	// when this action is called directly.
