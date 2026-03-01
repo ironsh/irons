@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/ironsh/irons/api"
+	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -21,78 +23,109 @@ network traffic and egress policies for your resources.`,
 	},
 }
 
-// egressAllowCmd represents the egress allow command
-var egressAllowCmd = &cobra.Command{
-	Use:   "allow DOMAIN",
-	Short: "Allow egress traffic to a domain",
-	Long: `Allow outbound traffic to a specific domain via HTTPS.
+// egressAddCmd creates a new egress rule
+var egressAddCmd = &cobra.Command{
+	Use:   "add",
+	Short: "Add an egress rule",
+	Long: `Add an egress rule to allow outbound traffic to a host or CIDR.
 
 Examples:
-  irons egress allow crates.io
-  irons egress allow my-private-registry.com
-  irons egress allow api.example.com`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return fmt.Errorf("requires exactly one DOMAIN argument")
-		}
-		return nil
-	},
+  irons egress add --host crates.io
+  irons egress add --cidr 10.0.0.0/8 --name "internal network" --comment "Allow internal traffic"
+  irons egress add --host api.example.com --name "example api"`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		domain := args[0]
+		host, _ := cmd.Flags().GetString("host")
+		cidr, _ := cmd.Flags().GetString("cidr")
+		name, _ := cmd.Flags().GetString("name")
+		comment, _ := cmd.Flags().GetString("comment")
 
-		// Create API client
+		if host == "" && cidr == "" {
+			return fmt.Errorf("either --host or --cidr is required")
+		}
+		if host != "" && cidr != "" {
+			return fmt.Errorf("only one of --host or --cidr may be specified")
+		}
+
 		apiURL := viper.GetString("api-url")
 		apiKey := viper.GetString("api-key")
 		client := api.NewClient(apiURL, apiKey)
 
-		// Show what we're doing
-		fmt.Printf("Allowing egress to '%s'...\n", domain)
-
-		// Make API call
-		if err := client.EgressAllow(domain); err != nil {
-			return fmt.Errorf("allowing egress: %w", err)
+		req := api.EgressRuleRequest{
+			Name:    name,
+			Host:    host,
+			CIDR:    cidr,
+			Comment: comment,
 		}
 
-		// Show success
-		fmt.Printf("✓ Egress rule added successfully!\n")
+		rule, err := client.EgressCreateRule(req)
+		if err != nil {
+			return fmt.Errorf("creating egress rule: %w", err)
+		}
+
+		fmt.Printf("✓ Egress rule created (ID: %s)\n", rule.ID)
 		return nil
 	},
 }
 
-// egressDenyCmd represents the egress deny command
-var egressDenyCmd = &cobra.Command{
-	Use:   "deny DOMAIN",
-	Short: "Deny egress traffic to a domain",
-	Long: `Deny outbound traffic to a specific domain.
+// egressRemoveCmd removes an egress rule by ID
+var egressRemoveCmd = &cobra.Command{
+	Use:   "remove RULE_ID",
+	Short: "Remove an egress rule",
+	Long: `Remove an egress rule by its ID.
 
 Examples:
-  irons egress deny registry.npmjs.org
-  irons egress deny malicious-site.com
-  irons egress deny ads.example.com`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return fmt.Errorf("requires exactly one DOMAIN argument")
-		}
-		return nil
-	},
+  irons egress remove rule_abc123`,
+	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		domain := args[0]
+		ruleID := args[0]
 
-		// Create API client
 		apiURL := viper.GetString("api-url")
 		apiKey := viper.GetString("api-key")
 		client := api.NewClient(apiURL, apiKey)
 
-		// Show what we're doing
-		fmt.Printf("Denying egress to '%s'...\n", domain)
-
-		// Make API call
-		if err := client.EgressDeny(domain); err != nil {
-			return fmt.Errorf("denying egress: %w", err)
+		if err := client.EgressDeleteRule(ruleID); err != nil {
+			return fmt.Errorf("removing egress rule: %w", err)
 		}
 
-		// Show success
-		fmt.Printf("✓ Egress rule added successfully!\n")
+		fmt.Printf("✓ Egress rule '%s' removed.\n", ruleID)
+		return nil
+	},
+}
+
+// egressListCmd represents the egress list command
+var egressListCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List egress rules for the account",
+	Long: `List all current egress rules for the account.
+
+Examples:
+  irons egress list`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		apiURL := viper.GetString("api-url")
+		apiKey := viper.GetString("api-key")
+		client := api.NewClient(apiURL, apiKey)
+
+		resp, err := client.EgressListRules()
+		if err != nil {
+			return fmt.Errorf("listing egress rules: %w", err)
+		}
+
+		if len(resp.Data) == 0 {
+			fmt.Println("No egress rules found.")
+			return nil
+		}
+
+		table := tablewriter.NewTable(os.Stdout)
+		table.Header([]string{"ID", "Name", "Host/CIDR", "Comment"})
+		for _, r := range resp.Data {
+			target := r.Host
+			if target == "" {
+				target = r.CIDR
+			}
+			table.Append([]string{r.ID, r.Name, target, r.Comment})
+		}
+		table.Render()
+
 		return nil
 	},
 }
@@ -105,15 +138,14 @@ var egressModeCmd = &cobra.Command{
 
 Examples:
   irons egress mode
-  irons egress mode deny
+  irons egress mode enforce
   irons egress mode warn`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Create API client
 		apiURL := viper.GetString("api-url")
 		apiKey := viper.GetString("api-key")
 		client := api.NewClient(apiURL, apiKey)
 
-		resp, err := client.EgressGetMode()
+		resp, err := client.EgressGetPolicy()
 		if err != nil {
 			return fmt.Errorf("getting egress mode: %w", err)
 		}
@@ -123,21 +155,21 @@ Examples:
 	},
 }
 
-// egressModeDenyCmd sets the egress mode to deny
-var egressModeDenyCmd = &cobra.Command{
-	Use:   "deny",
-	Short: "Set egress mode to deny",
-	Long:  `Set the egress mode to deny. Egress traffic not matching allow rules will be blocked.`,
+// egressModeEnforceCmd sets the egress mode to enforce
+var egressModeEnforceCmd = &cobra.Command{
+	Use:   "enforce",
+	Short: "Set egress mode to enforce",
+	Long:  `Set the egress mode to enforce. Egress traffic not matching allow rules will be blocked.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		apiURL := viper.GetString("api-url")
 		apiKey := viper.GetString("api-key")
 		client := api.NewClient(apiURL, apiKey)
 
-		if err := client.EgressSetMode("deny"); err != nil {
+		if err := client.EgressSetPolicy("enforce"); err != nil {
 			return fmt.Errorf("setting egress mode: %w", err)
 		}
 
-		fmt.Printf("✓ Egress mode set to deny\n")
+		fmt.Printf("✓ Egress mode set to enforce\n")
 		return nil
 	},
 }
@@ -152,7 +184,7 @@ var egressModeWarnCmd = &cobra.Command{
 		apiKey := viper.GetString("api-key")
 		client := api.NewClient(apiURL, apiKey)
 
-		if err := client.EgressSetMode("warn"); err != nil {
+		if err := client.EgressSetPolicy("warn"); err != nil {
 			return fmt.Errorf("setting egress mode: %w", err)
 		}
 
@@ -161,62 +193,20 @@ var egressModeWarnCmd = &cobra.Command{
 	},
 }
 
-// egressListCmd represents the egress list command
-var egressListCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List egress rules for the account",
-	Long: `List all current egress rules for the account.
-
-Examples:
-  irons egress list`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
-
-		// Show what we're doing
-		fmt.Printf("Listing egress rules...\n")
-
-		// Make API call
-		resp, err := client.EgressList()
-		if err != nil {
-			return fmt.Errorf("listing egress rules: %w", err)
-		}
-
-		// Show results
-		fmt.Printf("\n✓ Egress rules:\n")
-
-		if len(resp.AllowedDomains) > 0 {
-			fmt.Printf("  Allowed domains:\n")
-			for _, domain := range resp.AllowedDomains {
-				fmt.Printf("    - %s\n", domain)
-			}
-		} else {
-			fmt.Printf("  Allowed domains: none\n")
-		}
-
-		if len(resp.DeniedDomains) > 0 {
-			fmt.Printf("  Denied domains:\n")
-			for _, domain := range resp.DeniedDomains {
-				fmt.Printf("    - %s\n", domain)
-			}
-		} else {
-			fmt.Printf("  Denied domains: none\n")
-		}
-		return nil
-	},
-}
-
 func init() {
 	rootCmd.AddCommand(egressCmd)
 
 	// Add subcommands
-	egressCmd.AddCommand(egressAllowCmd)
-	egressCmd.AddCommand(egressDenyCmd)
+	egressCmd.AddCommand(egressAddCmd)
+	egressCmd.AddCommand(egressRemoveCmd)
 	egressCmd.AddCommand(egressListCmd)
 	egressCmd.AddCommand(egressModeCmd)
-	egressModeCmd.AddCommand(egressModeDenyCmd)
+	egressModeCmd.AddCommand(egressModeEnforceCmd)
 	egressModeCmd.AddCommand(egressModeWarnCmd)
 
+	// Flags for add command
+	egressAddCmd.Flags().String("host", "", "Host to allow egress to")
+	egressAddCmd.Flags().String("cidr", "", "CIDR range to allow egress to")
+	egressAddCmd.Flags().String("name", "", "Optional name for the rule")
+	egressAddCmd.Flags().String("comment", "", "Optional comment for the rule")
 }

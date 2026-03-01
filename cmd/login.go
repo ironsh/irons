@@ -8,6 +8,7 @@ import (
 	"github.com/ironsh/irons/api"
 	"github.com/ironsh/irons/config"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var loginCmd = &cobra.Command{
@@ -19,8 +20,9 @@ This command initiates a browser-based login flow. You will be given a URL
 to visit where you can authorize this device. Once authorized, your API token
 will be saved to ~/.config/irons/config.yml automatically.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Device auth endpoints live on the console, not the API.
-		client := api.NewClient("https://console.iron.sh", "")
+		// Use the standard API URL for auth endpoints.
+		apiURL := viper.GetString("api-url")
+		client := api.NewClient(apiURL, "")
 
 		// Step 1: request a device code.
 		fmt.Println("Requesting device code...")

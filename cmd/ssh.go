@@ -12,15 +12,15 @@ import (
 
 // sshCmd represents the ssh command
 var sshCmd = &cobra.Command{
-	Use:   "ssh NAME",
-	Short: "SSH into a sandbox",
-	Long: `SSH into a sandbox to execute commands or open an interactive session.
+	Use:   "ssh ID",
+	Short: "SSH into a VM",
+	Long: `SSH into a VM to execute commands or open an interactive session.
 
-This command allows you to connect to a specific sandbox via SSH
+This command allows you to connect to a specific VM via SSH
 with the specified configuration and credentials.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
+		id := args[0]
 		showCommand, _ := cmd.Flags().GetBool("command")
 		strictHostKeys, _ := cmd.Flags().GetBool("strict-hostkeys")
 
@@ -30,9 +30,9 @@ with the specified configuration and credentials.`,
 		client := api.NewClient(apiURL, apiKey)
 
 		// Get SSH connection info
-		fmt.Printf("Getting SSH connection info for sandbox '%s'...\n", name)
+		fmt.Printf("Getting SSH connection info for VM '%s'...\n", id)
 
-		resp, err := client.SSH(name)
+		resp, err := client.SSH(id)
 		if err != nil {
 			return fmt.Errorf("getting SSH info: %w", err)
 		}

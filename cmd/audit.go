@@ -18,32 +18,32 @@ import (
 var auditCmd = &cobra.Command{
 	Use:   "audit",
 	Short: "View audit logs",
-	Long:  `View audit logs for sandbox activity.`,
+	Long:  `View audit logs for VM activity.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
 	},
 }
 
 var auditEgressCmd = &cobra.Command{
-	Use:   "egress NAME",
-	Short: "View egress audit logs for a sandbox",
-	Long: `View egress audit logs for a sandbox.
+	Use:   "egress",
+	Short: "View egress audit logs",
+	Long: `View egress audit logs.
 
 Prints a log of outbound network connection attempts, including whether each
 was allowed or denied. Use --follow to continuously tail new events.
 
 Examples:
-  irons audit egress my-sandbox
-  irons audit egress my-sandbox --follow`,
-	Args: func(cmd *cobra.Command, args []string) error {
-		if len(args) != 1 {
-			return fmt.Errorf("requires exactly one NAME argument")
-		}
-		return nil
-	},
+  irons audit egress
+  irons audit egress --vm vm_abc123
+  irons audit egress --verdict blocked
+  irons audit egress --follow`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		name := args[0]
 		follow, _ := cmd.Flags().GetBool("follow")
+		vmID, _ := cmd.Flags().GetString("vm")
+		verdict, _ := cmd.Flags().GetString("verdict")
+		since, _ := cmd.Flags().GetString("since")
+		until, _ := cmd.Flags().GetString("until")
+		limit, _ := cmd.Flags().GetInt("limit")
 
 		apiURL := viper.GetString("api-url")
 		apiKey := viper.GetString("api-key")
@@ -52,19 +52,27 @@ Examples:
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
 
-		var pageToken int64
+		params := api.AuditEgressParams{
+			VMID:    vmID,
+			Verdict: verdict,
+			Since:   since,
+			Until:   until,
+			Limit:   limit,
+		}
 
-		printEvents := func(resp *api.EgressAuditResponse) {
-			for _, ev := range resp.Events {
+		var cursor string
+
+		printEvents := func(resp *api.ListAuditEgressResponse) {
+			for _, ev := range resp.Data {
 				printEgressEvent(ev)
 			}
-			if resp.PageToken != 0 {
-				pageToken = resp.PageToken
+			if resp.Cursor != nil {
+				cursor = *resp.Cursor
 			}
 		}
 
 		// Initial fetch.
-		resp, err := client.AuditEgress(name, pageToken)
+		resp, err := client.AuditEgress(params)
 		if err != nil {
 			return fmt.Errorf("fetching egress audit log: %w", err)
 		}
@@ -82,7 +90,8 @@ Examples:
 			case <-ctx.Done():
 				return nil
 			case <-ticker.C:
-				resp, err := client.AuditEgress(name, pageToken)
+				params.Cursor = cursor
+				resp, err := client.AuditEgress(params)
 				if err != nil {
 					fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 					continue
@@ -124,6 +133,9 @@ func printEgressEvent(ev api.EgressAuditEvent) {
 	var parts []string
 	parts = append(parts, ts)
 	parts = append(parts, label)
+	if ev.VMID != "" {
+		parts = append(parts, ev.VMID)
+	}
 	if ev.Protocol != "" {
 		parts = append(parts, fmt.Sprintf("%-5s", ev.Protocol))
 	}
@@ -140,4 +152,9 @@ func init() {
 	auditCmd.AddCommand(auditEgressCmd)
 
 	auditEgressCmd.Flags().BoolP("follow", "f", false, "Continuously poll for new events (like tail -f)")
+	auditEgressCmd.Flags().String("vm", "", "Filter by VM ID")
+	auditEgressCmd.Flags().String("verdict", "", "Filter by verdict (allowed, blocked, warn)")
+	auditEgressCmd.Flags().String("since", "", "Show events after this timestamp (RFC3339)")
+	auditEgressCmd.Flags().String("until", "", "Show events before this timestamp (RFC3339)")
+	auditEgressCmd.Flags().Int("limit", 0, "Maximum number of events to return")
 }

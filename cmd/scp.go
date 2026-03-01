@@ -14,19 +14,19 @@ import (
 // scpCmd represents the scp command
 var scpCmd = &cobra.Command{
 	Use:   "scp SRC DST",
-	Short: "Copy files to/from a sandbox via SCP",
-	Long: `Copy files to or from a sandbox using SCP.
+	Short: "Copy files to/from a VM via SCP",
+	Long: `Copy files to or from a VM using SCP.
 
-Prefix a path with the sandbox name and a colon to denote a remote path, e.g.:
+Prefix a path with the VM ID and a colon to denote a remote path, e.g.:
 
-  # Upload a local file to the sandbox
-  irons scp ./local-file.txt my-sandbox:/remote/path/
+  # Upload a local file to the VM
+  irons scp ./local-file.txt vm_abc123:/remote/path/
 
-  # Download a file from the sandbox
-  irons scp my-sandbox:/remote/file.txt ./local-dest/
+  # Download a file from the VM
+  irons scp vm_abc123:/remote/file.txt ./local-dest/
 
-The sandbox connection details (host, port, username) are resolved
-automatically from the IronCD API.`,
+The VM connection details (host, port, username) are resolved
+automatically from the API.`,
 	Args: cobra.ExactArgs(2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		src := args[0]
@@ -36,11 +36,11 @@ automatically from the IronCD API.`,
 		strictHostKeys, _ := cmd.Flags().GetBool("strict-hostkeys")
 		recursive, _ := cmd.Flags().GetBool("recursive")
 
-		// parseSandboxPath checks whether a path is in "name:remotepath" form.
-		// It returns the sandbox name and the remote path if so, or ("", "") if not.
+		// parseVMPath checks whether a path is in "id:remotepath" form.
+		// It returns the VM ID and the remote path if so, or ("", "") if not.
 		// We avoid misidentifying Windows-style drive letters (e.g. C:\...) by
 		// requiring the prefix before the colon to be longer than one character.
-		parseSandboxPath := func(p string) (name, remotePath string, ok bool) {
+		parseVMPath := func(p string) (id, remotePath string, ok bool) {
 			idx := strings.Index(p, ":")
 			if idx <= 1 {
 				return "", "", false
@@ -48,22 +48,22 @@ automatically from the IronCD API.`,
 			return p[:idx], p[idx+1:], true
 		}
 
-		// Exactly one of src or dst must be a sandbox path.
-		srcName, srcRemote, srcIsRemote := parseSandboxPath(src)
-		dstName, dstRemote, dstIsRemote := parseSandboxPath(dst)
+		// Exactly one of src or dst must be a VM path.
+		srcID, srcRemote, srcIsRemote := parseVMPath(src)
+		dstID, dstRemote, dstIsRemote := parseVMPath(dst)
 
 		if srcIsRemote && dstIsRemote {
-			return fmt.Errorf("only one of SRC or DST may be a sandbox path (sandbox:path)")
+			return fmt.Errorf("only one of SRC or DST may be a VM path (id:path)")
 		}
 		if !srcIsRemote && !dstIsRemote {
-			return fmt.Errorf("one of SRC or DST must be a sandbox path (sandbox:path)")
+			return fmt.Errorf("one of SRC or DST must be a VM path (id:path)")
 		}
 
-		var name string
+		var id string
 		if srcIsRemote {
-			name = srcName
+			id = srcID
 		} else {
-			name = dstName
+			id = dstID
 		}
 
 		// Create API client
@@ -72,16 +72,16 @@ automatically from the IronCD API.`,
 		client := api.NewClient(apiURL, apiKey)
 
 		// Resolve SSH connection info (scp connects over SSH)
-		fmt.Printf("Getting SSH connection info for sandbox '%s'...\n", name)
+		fmt.Printf("Getting SSH connection info for VM '%s'...\n", id)
 
-		resp, err := client.SSH(name)
+		resp, err := client.SSH(id)
 		if err != nil {
 			return fmt.Errorf("getting SSH info: %w", err)
 		}
 
 		remote := fmt.Sprintf("%s@%s", resp.Username, resp.Host)
 
-		// Replace the sandbox:path form with user@host:path.
+		// Replace the id:path form with user@host:path.
 		if srcIsRemote {
 			src = fmt.Sprintf("%s:%s", remote, srcRemote)
 		}

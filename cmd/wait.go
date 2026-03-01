@@ -15,13 +15,13 @@ const (
 	pollTimeout  = 10 * time.Minute
 )
 
-// waitForStatus polls the sandbox status until it matches one of the expected
+// waitForStatus polls the VM status until it matches one of the expected
 // statuses, until the timeout is exceeded, or until ctx is cancelled. It
 // prints progress to stdout.
-func waitForStatus(ctx context.Context, client *api.Client, name string, expected []string) error {
+func waitForStatus(ctx context.Context, client *api.Client, id string, expected []string) error {
 	deadline := time.Now().Add(pollTimeout)
 
-	fmt.Printf("Waiting for sandbox '%s' to be %s", name, strings.Join(expected, " or "))
+	fmt.Printf("Waiting for VM '%s' to be %s", id, strings.Join(expected, " or "))
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -29,17 +29,17 @@ func waitForStatus(ctx context.Context, client *api.Client, name string, expecte
 	for {
 		if time.Now().After(deadline) {
 			fmt.Println()
-			return fmt.Errorf("timed out after %s waiting for sandbox '%s' to be %s",
-				pollTimeout, name, strings.Join(expected, " or "))
+			return fmt.Errorf("timed out after %s waiting for VM '%s' to be %s",
+				pollTimeout, id, strings.Join(expected, " or "))
 		}
 
-		resp, err := client.Status(name)
+		resp, err := client.GetVM(id)
 		if err != nil {
 			// Transient network errors shouldn't abort the wait; just retry.
 			fmt.Print(".")
-		} else if resp.Status == "error" {
+		} else if resp.Status == "failed" {
 			fmt.Println()
-			return fmt.Errorf("sandbox '%s' entered error state: %s", name, resp.Status)
+			return fmt.Errorf("VM '%s' entered failed state", id)
 		} else if slices.Contains(expected, resp.Status) {
 			fmt.Println()
 			return nil
@@ -51,8 +51,8 @@ func waitForStatus(ctx context.Context, client *api.Client, name string, expecte
 		select {
 		case <-ctx.Done():
 			fmt.Println()
-			return fmt.Errorf("cancelled while waiting for sandbox '%s' to be %s: %w",
-				name, strings.Join(expected, " or "), ctx.Err())
+			return fmt.Errorf("cancelled while waiting for VM '%s' to be %s: %w",
+				id, strings.Join(expected, " or "), ctx.Err())
 		case <-ticker.C:
 		}
 	}

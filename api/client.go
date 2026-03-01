@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"time"
 )
 
-// Client represents the API client for sandbox operations
+// Client represents the API client for VM operations
 type Client struct {
 	BaseURL    string
 	APIKey     string
@@ -27,17 +28,27 @@ func NewClient(baseURL, apiKey string) *Client {
 	}
 }
 
-// CreateRequest represents the request payload for creating a sandbox
+// CreateRequest represents the request payload for creating a VM
 type CreateRequest struct {
 	PublicKey string `json:"public_key"`
 	Name      string `json:"name"`
 }
 
-// CreateResponse represents the response from creating a sandbox
-type CreateResponse struct {
-	ID     string `json:"id"`
-	Name   string `json:"name"`
-	Status string `json:"status"`
+// VM represents a VM resource returned by the API
+type VM struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Status       string `json:"status"`
+	StatusDetail string `json:"status_detail,omitempty"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
+// ListVMsResponse represents the response from listing all VMs.
+type ListVMsResponse struct {
+	Data    []VM    `json:"data"`
+	HasMore bool    `json:"has_more"`
+	Cursor  *string `json:"cursor,omitempty"`
 }
 
 // SSHResponse represents the response from SSH endpoint
@@ -46,36 +57,6 @@ type SSHResponse struct {
 	Port     int    `json:"port"`
 	Username string `json:"username"`
 	Command  string `json:"command,omitempty"`
-}
-
-// StatusResponse represents the response from status endpoint
-type StatusResponse struct {
-	Name      string            `json:"name"`
-	ID        string            `json:"id"`
-	Status    string            `json:"status"`
-	CreatedAt string            `json:"created_at"`
-	UpdatedAt string            `json:"updated_at"`
-	Metadata  map[string]string `json:"metadata,omitempty"`
-}
-
-// DestroyResponse represents the response from destroy endpoint
-type DestroyResponse struct {
-	Name string `json:"name"`
-}
-
-// ListSandboxesResponse represents the response from listing all sandboxes.
-type ListSandboxesResponse struct {
-	Sandboxes []StatusResponse `json:"sandboxes"`
-}
-
-// EgressAllowRequest represents the request payload for allowing egress to a domain
-type EgressAllowRequest struct {
-	Domain string `json:"domain"`
-}
-
-// EgressDenyRequest represents the request payload for denying egress to a domain
-type EgressDenyRequest struct {
-	Domain string `json:"domain"`
 }
 
 // EgressModeRequest represents the request payload for setting the egress mode
@@ -88,47 +69,69 @@ type EgressModeResponse struct {
 	Mode string `json:"mode"`
 }
 
-// EgressListResponse represents the response from listing egress rules
-type EgressListResponse struct {
-	AllowedDomains []string `json:"allowed_domains"`
-	DeniedDomains  []string `json:"denied_domains"`
+// EgressRule represents a single egress rule.
+type EgressRule struct {
+	ID        string `json:"id"`
+	Name      string `json:"name,omitempty"`
+	Host      string `json:"host,omitempty"`
+	CIDR      string `json:"cidr,omitempty"`
+	Comment   string `json:"comment,omitempty"`
+	CreatedAt string `json:"created_at"`
+}
+
+// EgressRuleRequest represents the request payload for creating an egress rule.
+type EgressRuleRequest struct {
+	Name    string `json:"name,omitempty"`
+	Host    string `json:"host,omitempty"`
+	CIDR    string `json:"cidr,omitempty"`
+	Comment string `json:"comment,omitempty"`
+}
+
+// ListEgressRulesResponse represents the paginated response from listing egress rules.
+type ListEgressRulesResponse struct {
+	Data    []EgressRule `json:"data"`
+	HasMore bool         `json:"has_more"`
+	Cursor  *string      `json:"cursor,omitempty"`
 }
 
 // EgressAuditEvent represents a single egress audit log entry.
 type EgressAuditEvent struct {
-	Type        string    `json:"type"`
-	Timestamp   time.Time `json:"timestamp"`
-	SandboxName string    `json:"sandbox_name"`
-	Host        string    `json:"host"`
-	// Protocol is the network protocol inferred from the request
-	// (e.g. "http", "tls", "tcp"). Empty when it cannot be determined.
-	Protocol string `json:"protocol,omitempty"`
-	// Allowed reports whether the request was ultimately permitted.
-	// Use Verdict for a more precise description of the outcome.
-	Allowed bool `json:"allowed"`
-	// Verdict gives the precise outcome of the check:
-	//   - "allowed"  – host was in the allowlist.
-	//   - "blocked"  – host was not in the allowlist and the request was denied.
-	//   - "warn"     – host was not in the allowlist but was permitted because
-	//                  the egress mode is "warn".
-	Verdict string `json:"verdict,omitempty"`
-	Mode    string `json:"mode,omitempty"`
+	ID        string    `json:"id"`
+	VMID      string    `json:"vm_id"`
+	Timestamp time.Time `json:"timestamp"`
+	Host      string    `json:"host"`
+	CIDR      string    `json:"cidr,omitempty"`
+	Protocol  string    `json:"protocol,omitempty"`
+	Allowed   bool      `json:"allowed"`
+	Verdict   string    `json:"verdict,omitempty"`
+	Mode      string    `json:"mode,omitempty"`
 }
 
-// EgressAuditResponse is the paginated response for GET /sandboxes/{name}/audit/egress.
-type EgressAuditResponse struct {
-	Events    []EgressAuditEvent `json:"events"`
-	PageToken int64              `json:"page_token,omitempty"`
+// ListAuditEgressResponse is the paginated response for GET /audit/egress.
+type ListAuditEgressResponse struct {
+	Data    []EgressAuditEvent `json:"data"`
+	HasMore bool               `json:"has_more"`
+	Cursor  *string            `json:"cursor,omitempty"`
 }
 
-// DeviceCodeResponse represents the response from POST /login/device/code
+// AuditEgressParams contains query parameters for the audit egress endpoint.
+type AuditEgressParams struct {
+	VMID    string
+	Verdict string
+	Since   string
+	Until   string
+	Limit   int
+	Cursor  string
+}
+
+// DeviceCodeResponse represents the response from POST /auth/device/code
 type DeviceCodeResponse struct {
 	Code            string    `json:"code"`
 	VerificationURI string    `json:"verification_uri"`
 	ExpiresAt       time.Time `json:"expires_at"`
 }
 
-// PollResponse represents the response from GET /login/device/poll
+// PollResponse represents the response from GET /auth/device/poll
 type PollResponse struct {
 	Status string `json:"status"`
 	Token  string `json:"token,omitempty"`
@@ -136,11 +139,14 @@ type PollResponse struct {
 
 // ErrorResponse represents an error response from the API
 type ErrorResponse struct {
-	Error string `json:"error"`
+	Error struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	} `json:"error"`
 }
 
-// Create creates a new sandbox
-func (c *Client) Create(key []byte, name string) (*CreateResponse, error) {
+// Create creates a new VM
+func (c *Client) Create(key []byte, name string) (*VM, error) {
 	req := CreateRequest{
 		PublicKey: string(key),
 		Name:      name,
@@ -151,24 +157,56 @@ func (c *Client) Create(key []byte, name string) (*CreateResponse, error) {
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	body, err := c.makeRequest("POST", "/sandboxes", bytes.NewReader(reqBody))
+	body, err := c.makeRequest("POST", "/vms", bytes.NewReader(reqBody))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create sandbox: %w", err)
+		return nil, fmt.Errorf("failed to create VM: %w", err)
 	}
 
-	var createResp CreateResponse
-	if err := json.Unmarshal(body, &createResp); err != nil {
+	var vm VM
+	if err := json.Unmarshal(body, &vm); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &createResp, nil
+	return &vm, nil
 }
 
-// SSH retrieves SSH connection information for a sandbox
-func (c *Client) SSH(name string) (*SSHResponse, error) {
-	url := fmt.Sprintf("/sandboxes/%s/ssh", name)
+// GetVM retrieves a VM by ID
+func (c *Client) GetVM(id string) (*VM, error) {
+	path := fmt.Sprintf("/vms/%s", id)
 
-	body, err := c.makeRequest("GET", url, nil)
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get VM: %w", err)
+	}
+
+	var vm VM
+	if err := json.Unmarshal(body, &vm); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &vm, nil
+}
+
+// ListVMs lists all VMs
+func (c *Client) ListVMs() (*ListVMsResponse, error) {
+	body, err := c.makeRequest("GET", "/vms", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list VMs: %w", err)
+	}
+
+	var listResp ListVMsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// SSH retrieves SSH connection information for a VM
+func (c *Client) SSH(id string) (*SSHResponse, error) {
+	path := fmt.Sprintf("/vms/%s/ssh", id)
+
+	body, err := c.makeRequest("GET", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get SSH info: %w", err)
 	}
@@ -181,97 +219,57 @@ func (c *Client) SSH(name string) (*SSHResponse, error) {
 	return &sshResp, nil
 }
 
-// Destroy destroys a sandbox
-func (c *Client) Destroy(name string) error {
-	url := fmt.Sprintf("/sandboxes/%s", name)
+// Destroy destroys a VM
+func (c *Client) Destroy(id string) error {
+	path := fmt.Sprintf("/vms/%s", id)
 
-	_, err := c.makeRequest("DELETE", url, nil)
+	_, err := c.makeRequest("DELETE", path, nil)
 	if err != nil {
-		return fmt.Errorf("failed to destroy sandbox: %w", err)
+		return fmt.Errorf("failed to destroy VM: %w", err)
 	}
 
 	return nil
 }
 
-// List lists all sandboxes
-func (c *Client) List() (*ListSandboxesResponse, error) {
-	body, err := c.makeRequest("GET", "/sandboxes", nil)
+// Start starts a VM
+func (c *Client) Start(id string) (*VM, error) {
+	path := fmt.Sprintf("/vms/%s/start", id)
+
+	body, err := c.makeRequest("POST", path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to list sandboxes: %w", err)
+		return nil, fmt.Errorf("failed to start VM: %w", err)
 	}
 
-	var listResp ListSandboxesResponse
-	if err := json.Unmarshal(body, &listResp); err != nil {
+	var vm VM
+	if err := json.Unmarshal(body, &vm); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &listResp, nil
+	return &vm, nil
 }
 
-// Status gets the status of a sandbox
-func (c *Client) Status(name string) (*StatusResponse, error) {
-	url := fmt.Sprintf("/sandboxes/%s", name)
+// Stop stops a VM
+func (c *Client) Stop(id string) (*VM, error) {
+	path := fmt.Sprintf("/vms/%s/stop", id)
 
-	body, err := c.makeRequest("GET", url, nil)
+	body, err := c.makeRequest("POST", path, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get status: %w", err)
+		return nil, fmt.Errorf("failed to stop VM: %w", err)
 	}
 
-	var statusResp StatusResponse
-	if err := json.Unmarshal(body, &statusResp); err != nil {
+	var vm VM
+	if err := json.Unmarshal(body, &vm); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
-	return &statusResp, nil
+	return &vm, nil
 }
 
-// EgressAllow allows egress traffic to a domain for a sandbox
-func (c *Client) EgressAllow(domain string) error {
-	url := "/egress/allow"
-
-	req := EgressAllowRequest{
-		Domain: domain,
-	}
-
-	reqBody, err := json.Marshal(req)
+// EgressGetPolicy gets the current egress policy for the account
+func (c *Client) EgressGetPolicy() (*EgressModeResponse, error) {
+	body, err := c.makeRequest("GET", "/egress/policy", nil)
 	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	_, err = c.makeRequest("POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		return fmt.Errorf("failed to allow egress: %w", err)
-	}
-
-	return nil
-}
-
-// EgressDeny denies egress traffic to a domain for a sandbox
-func (c *Client) EgressDeny(domain string) error {
-	url := "/egress/deny"
-
-	req := EgressDenyRequest{
-		Domain: domain,
-	}
-
-	reqBody, err := json.Marshal(req)
-	if err != nil {
-		return fmt.Errorf("failed to marshal request: %w", err)
-	}
-
-	_, err = c.makeRequest("POST", url, bytes.NewReader(reqBody))
-	if err != nil {
-		return fmt.Errorf("failed to deny egress: %w", err)
-	}
-
-	return nil
-}
-
-// EgressGetMode gets the current egress mode for the account
-func (c *Client) EgressGetMode() (*EgressModeResponse, error) {
-	body, err := c.makeRequest("GET", "/egress/mode", nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get egress mode: %w", err)
+		return nil, fmt.Errorf("failed to get egress policy: %w", err)
 	}
 
 	var modeResp EgressModeResponse
@@ -282,8 +280,8 @@ func (c *Client) EgressGetMode() (*EgressModeResponse, error) {
 	return &modeResp, nil
 }
 
-// EgressSetMode sets the egress mode for the account
-func (c *Client) EgressSetMode(mode string) error {
+// EgressSetPolicy sets the egress policy for the account
+func (c *Client) EgressSetPolicy(mode string) error {
 	req := EgressModeRequest{Mode: mode}
 
 	reqBody, err := json.Marshal(req)
@@ -291,24 +289,22 @@ func (c *Client) EgressSetMode(mode string) error {
 		return fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	_, err = c.makeRequest("PUT", "/egress/mode", bytes.NewReader(reqBody))
+	_, err = c.makeRequest("PUT", "/egress/policy", bytes.NewReader(reqBody))
 	if err != nil {
-		return fmt.Errorf("failed to set egress mode: %w", err)
+		return fmt.Errorf("failed to set egress policy: %w", err)
 	}
 
 	return nil
 }
 
-// EgressList lists all egress rules for the account
-func (c *Client) EgressList() (*EgressListResponse, error) {
-	url := "/egress"
-
-	body, err := c.makeRequest("GET", url, nil)
+// EgressListRules lists all egress rules for the account
+func (c *Client) EgressListRules() (*ListEgressRulesResponse, error) {
+	body, err := c.makeRequest("GET", "/egress/rules", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list egress rules: %w", err)
 	}
 
-	var listResp EgressListResponse
+	var listResp ListEgressRulesResponse
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -316,37 +312,98 @@ func (c *Client) EgressList() (*EgressListResponse, error) {
 	return &listResp, nil
 }
 
-// Start starts a sandbox
-func (c *Client) Start(name string) error {
-	url := fmt.Sprintf("/sandboxes/%s/start", name)
-
-	_, err := c.makeRequest("POST", url, nil)
+// EgressCreateRule creates a new egress rule
+func (c *Client) EgressCreateRule(req EgressRuleRequest) (*EgressRule, error) {
+	reqBody, err := json.Marshal(req)
 	if err != nil {
-		return fmt.Errorf("failed to start sandbox: %w", err)
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	body, err := c.makeRequest("POST", "/egress/rules", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create egress rule: %w", err)
+	}
+
+	var rule EgressRule
+	if err := json.Unmarshal(body, &rule); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &rule, nil
+}
+
+// EgressDeleteRule deletes an egress rule by ID
+func (c *Client) EgressDeleteRule(id string) error {
+	path := fmt.Sprintf("/egress/rules/%s", id)
+
+	_, err := c.makeRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete egress rule: %w", err)
 	}
 
 	return nil
 }
 
-// Stop stops a sandbox
-func (c *Client) Stop(name string) error {
-	url := fmt.Sprintf("/sandboxes/%s/stop", name)
+// VMEgressGetPolicy gets the egress policy for a specific VM
+func (c *Client) VMEgressGetPolicy(vmID string) (*EgressModeResponse, error) {
+	path := fmt.Sprintf("/vms/%s/egress/policy", vmID)
 
-	_, err := c.makeRequest("POST", url, nil)
+	body, err := c.makeRequest("GET", path, nil)
 	if err != nil {
-		return fmt.Errorf("failed to stop sandbox: %w", err)
+		return nil, fmt.Errorf("failed to get VM egress policy: %w", err)
+	}
+
+	var modeResp EgressModeResponse
+	if err := json.Unmarshal(body, &modeResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &modeResp, nil
+}
+
+// VMEgressSetPolicy sets the egress policy for a specific VM
+func (c *Client) VMEgressSetPolicy(vmID, mode string) error {
+	req := EgressModeRequest{Mode: mode}
+
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	path := fmt.Sprintf("/vms/%s/egress/policy", vmID)
+	_, err = c.makeRequest("PUT", path, bytes.NewReader(reqBody))
+	if err != nil {
+		return fmt.Errorf("failed to set VM egress policy: %w", err)
 	}
 
 	return nil
 }
 
-// AuditEgress fetches egress audit events for a sandbox. Pass pageToken=0 for
-// the first request; subsequent requests should pass the PageToken from the
-// previous response to receive only newly-appended events.
-func (c *Client) AuditEgress(name string, pageToken int64) (*EgressAuditResponse, error) {
-	path := fmt.Sprintf("/sandboxes/%s/audit/egress", name)
-	if pageToken > 0 {
-		path = fmt.Sprintf("%s?pageToken=%d", path, pageToken)
+// AuditEgress fetches egress audit events with the given query parameters.
+func (c *Client) AuditEgress(params AuditEgressParams) (*ListAuditEgressResponse, error) {
+	q := url.Values{}
+	if params.VMID != "" {
+		q.Set("vm_id", params.VMID)
+	}
+	if params.Verdict != "" {
+		q.Set("verdict", params.Verdict)
+	}
+	if params.Since != "" {
+		q.Set("since", params.Since)
+	}
+	if params.Until != "" {
+		q.Set("until", params.Until)
+	}
+	if params.Limit > 0 {
+		q.Set("limit", fmt.Sprintf("%d", params.Limit))
+	}
+	if params.Cursor != "" {
+		q.Set("cursor", params.Cursor)
+	}
+
+	path := "/audit/egress"
+	if encoded := q.Encode(); encoded != "" {
+		path += "?" + encoded
 	}
 
 	body, err := c.makeRequest("GET", path, nil)
@@ -354,7 +411,7 @@ func (c *Client) AuditEgress(name string, pageToken int64) (*EgressAuditResponse
 		return nil, fmt.Errorf("failed to fetch egress audit log: %w", err)
 	}
 
-	var auditResp EgressAuditResponse
+	var auditResp ListAuditEgressResponse
 	if err := json.Unmarshal(body, &auditResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -364,7 +421,7 @@ func (c *Client) AuditEgress(name string, pageToken int64) (*EgressAuditResponse
 
 // DeviceCode requests a new device code to begin the device authorization flow.
 func (c *Client) DeviceCode() (*DeviceCodeResponse, error) {
-	body, err := c.makeRequest("POST", "/login/device/code", nil)
+	body, err := c.makeRequest("POST", "/auth/device/code", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to request device code: %w", err)
 	}
@@ -379,7 +436,7 @@ func (c *Client) DeviceCode() (*DeviceCodeResponse, error) {
 
 // PollDevice polls the device authorization endpoint for the given code.
 func (c *Client) PollDevice(code string) (*PollResponse, error) {
-	path := fmt.Sprintf("/login/device/poll?code=%s", code)
+	path := fmt.Sprintf("/auth/device/poll?code=%s", code)
 
 	body, err := c.makeRequest("GET", path, nil)
 	if err != nil {
@@ -396,16 +453,18 @@ func (c *Client) PollDevice(code string) (*PollResponse, error) {
 
 // makeRequest makes an HTTP request with common headers and error handling
 func (c *Client) makeRequest(method, path string, body io.Reader) ([]byte, error) {
-	url := c.BaseURL + path
+	reqURL := c.BaseURL + path
 
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequest(method, reqURL, body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -428,8 +487,8 @@ func (c *Client) makeRequest(method, path string, body io.Reader) ([]byte, error
 	if resp.StatusCode >= 400 {
 		// Try to parse as JSON error response
 		var errResp ErrorResponse
-		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error != "" {
-			return nil, fmt.Errorf("API error: %s", errResp.Error)
+		if err := json.Unmarshal(respBody, &errResp); err == nil && errResp.Error.Message != "" {
+			return nil, fmt.Errorf("API error: %s", errResp.Error.Message)
 		}
 
 		// Fallback to raw body if JSON parsing fails

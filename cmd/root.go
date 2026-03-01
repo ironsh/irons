@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/viper"
 )
 
-const DefaultAPIURL = "https://elrond.ironcd.dev"
+const DefaultAPIURL = "https://api.iron.sh/v1"
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{

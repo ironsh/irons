@@ -13,10 +13,10 @@ import (
 // listCmd represents the list command
 var listCmd = &cobra.Command{
 	Use:   "list",
-	Short: "List all sandboxes",
-	Long: `List all sandboxes associated with your account.
+	Short: "List all VMs",
+	Long: `List all VMs associated with your account.
 
-This command displays a summary of every sandbox, including its name,
+This command displays a summary of every VM, including its name,
 ID, current status, and creation date.
 
 Examples:
@@ -29,20 +29,20 @@ Examples:
 		client := api.NewClient(apiURL, apiKey)
 
 		// Make API call
-		resp, err := client.List()
+		resp, err := client.ListVMs()
 		if err != nil {
-			return fmt.Errorf("listing sandboxes: %w", err)
+			return fmt.Errorf("listing VMs: %w", err)
 		}
 
-		if len(resp.Sandboxes) == 0 {
-			fmt.Println("No sandboxes found.")
+		if len(resp.Data) == 0 {
+			fmt.Println("No VMs found.")
 			return nil
 		}
 
 		table := tablewriter.NewTable(os.Stdout)
 		table.Header([]string{"Name", "ID", "Status", "Created At"})
-		for _, s := range resp.Sandboxes {
-			table.Append([]string{s.Name, s.ID, s.Status, s.CreatedAt})
+		for _, vm := range resp.Data {
+			table.Append([]string{vm.Name, vm.ID, vm.Status, vm.CreatedAt})
 		}
 		table.Render()
 
