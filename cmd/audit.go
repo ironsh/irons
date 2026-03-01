@@ -12,7 +12,6 @@ import (
 	"github.com/fatih/color"
 	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var auditCmd = &cobra.Command{
@@ -45,12 +44,18 @@ Examples:
 		until, _ := cmd.Flags().GetString("until")
 		limit, _ := cmd.Flags().GetInt("limit")
 
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 		defer cancel()
+
+		if vmID != "" {
+			resolved, err := resolveVM(client, vmID)
+			if err != nil {
+				return err
+			}
+			vmID = resolved
+		}
 
 		params := api.AuditEgressParams{
 			VMID:    vmID,
@@ -60,23 +65,15 @@ Examples:
 			Limit:   limit,
 		}
 
-		var cursor string
-
-		printEvents := func(resp *api.ListAuditEgressResponse) {
-			for _, ev := range resp.Data {
-				printEgressEvent(ev)
-			}
-			if resp.Cursor != nil {
-				cursor = *resp.Cursor
-			}
-		}
-
 		// Initial fetch.
 		resp, err := client.AuditEgress(params)
 		if err != nil {
 			return fmt.Errorf("fetching egress audit log: %w", err)
 		}
-		printEvents(resp)
+		for _, ev := range resp.Data {
+			printEgressEvent(ev)
+		}
+		params.Cursor = resp.Cursor
 
 		if !follow {
 			return nil
@@ -85,18 +82,51 @@ Examples:
 		ticker := time.NewTicker(2 * time.Second)
 		defer ticker.Stop()
 
+		var prevLastEventID string
+
+		// fetch returns true if there are more events to fetch right away.
+		fetch := func() bool {
+			resp, err := client.AuditEgress(params)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+				return false
+			}
+			if resp.Cursor != "" {
+				params.Cursor = resp.Cursor
+			}
+
+			if len(resp.Data) == 0 {
+				return false
+			}
+
+			lastEventID := resp.Data[len(resp.Data)-1].ID
+			if lastEventID == prevLastEventID {
+				return false
+			}
+			prevLastEventID = lastEventID
+
+			for _, ev := range resp.Data {
+				printEgressEvent(ev)
+			}
+
+			return true
+		}
+
 		for {
+			if immediate := fetch(); immediate {
+				select {
+				case <-ctx.Done():
+					return nil
+				default:
+					continue
+				}
+			}
+
 			select {
 			case <-ctx.Done():
 				return nil
 			case <-ticker.C:
-				params.Cursor = cursor
-				resp, err := client.AuditEgress(params)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "warning: %v\n", err)
-					continue
-				}
-				printEvents(resp)
+				continue
 			}
 		}
 	},
@@ -154,7 +184,7 @@ func init() {
 	auditEgressCmd.Flags().BoolP("follow", "f", false, "Continuously poll for new events (like tail -f)")
 	auditEgressCmd.Flags().String("vm", "", "Filter by VM ID")
 	auditEgressCmd.Flags().String("verdict", "", "Filter by verdict (allowed, blocked, warn)")
-	auditEgressCmd.Flags().String("since", "", "Show events after this timestamp (RFC3339)")
+	auditEgressCmd.Flags().String("since", time.Now().Add(-time.Hour).Format(time.RFC3339), "Show events after this timestamp (RFC3339, default to 1 hour ago)")
 	auditEgressCmd.Flags().String("until", "", "Show events before this timestamp (RFC3339)")
 	auditEgressCmd.Flags().Int("limit", 0, "Maximum number of events to return")
 }

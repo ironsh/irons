@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // statusCmd represents the status command
@@ -22,12 +20,15 @@ Examples:
   irons status vm_abc123`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
+		idOrName := args[0]
 
 		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
+
+		id, err := resolveVM(client, idOrName)
+		if err != nil {
+			return err
+		}
 
 		// Make API call
 		resp, err := client.GetVM(id)

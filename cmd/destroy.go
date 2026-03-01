@@ -4,9 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // destroyCmd represents the destroy command
@@ -26,13 +24,16 @@ Examples:
   irons destroy --force vm_abc123`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
+		idOrName := args[0]
 		force, _ := cmd.Flags().GetBool("force")
 
 		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
+
+		id, err := resolveVM(client, idOrName)
+		if err != nil {
+			return err
+		}
 
 		if force {
 			// Check current status before deciding whether to stop first.
@@ -48,7 +49,7 @@ Examples:
 					return fmt.Errorf("stopping VM: %w", err)
 				}
 
-				if err := waitForStatus(cmd.Context(), client, id, []string{"stopped"}); err != nil {
+				if err := waitForVMCond(cmd.Context(), client, id, statusAndDetailEq("stopped", "stopped")); err != nil {
 					return err
 				}
 

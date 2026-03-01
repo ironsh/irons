@@ -6,9 +6,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // scpCmd represents the scp command
@@ -59,17 +57,20 @@ automatically from the API.`,
 			return fmt.Errorf("one of SRC or DST must be a VM path (id:path)")
 		}
 
-		var id string
+		var idOrName string
 		if srcIsRemote {
-			id = srcID
+			idOrName = srcID
 		} else {
-			id = dstID
+			idOrName = dstID
 		}
 
 		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
+
+		id, err := resolveVM(client, idOrName)
+		if err != nil {
+			return err
+		}
 
 		// Resolve SSH connection info (scp connects over SSH)
 		fmt.Printf("Getting SSH connection info for VM '%s'...\n", id)

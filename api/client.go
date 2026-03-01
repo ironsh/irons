@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"strings"
 	"time"
 )
 
@@ -14,6 +16,7 @@ import (
 type Client struct {
 	BaseURL    string
 	APIKey     string
+	Debug      bool
 	HTTPClient *http.Client
 }
 
@@ -26,6 +29,13 @@ func NewClient(baseURL, apiKey string) *Client {
 			Timeout: 30 * time.Second,
 		},
 	}
+}
+
+// NewClientDebug creates a new API client with debug logging enabled
+func NewClientDebug(baseURL, apiKey string, debug bool) *Client {
+	c := NewClient(baseURL, apiKey)
+	c.Debug = debug
+	return c
 }
 
 // CreateRequest represents the request payload for creating a VM
@@ -111,7 +121,7 @@ type EgressAuditEvent struct {
 type ListAuditEgressResponse struct {
 	Data    []EgressAuditEvent `json:"data"`
 	HasMore bool               `json:"has_more"`
-	Cursor  *string            `json:"cursor,omitempty"`
+	Cursor  string             `json:"cursor,omitempty"`
 }
 
 // AuditEgressParams contains query parameters for the audit egress endpoint.
@@ -145,6 +155,22 @@ type ErrorResponse struct {
 	} `json:"error"`
 }
 
+// dataWrapper is used to decode singular API responses wrapped in a "data" key.
+type dataWrapper[T any] struct {
+	Data T `json:"data"`
+}
+
+// unwrapData decodes a singular response body that is wrapped in a top-level
+// "data" key and returns the inner value.
+func unwrapData[T any](body []byte) (T, error) {
+	var w dataWrapper[T]
+	if err := json.Unmarshal(body, &w); err != nil {
+		var zero T
+		return zero, err
+	}
+	return w.Data, nil
+}
+
 // Create creates a new VM
 func (c *Client) Create(key []byte, name string) (*VM, error) {
 	req := CreateRequest{
@@ -162,8 +188,8 @@ func (c *Client) Create(key []byte, name string) (*VM, error) {
 		return nil, fmt.Errorf("failed to create VM: %w", err)
 	}
 
-	var vm VM
-	if err := json.Unmarshal(body, &vm); err != nil {
+	vm, err := unwrapData[VM](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -179,8 +205,8 @@ func (c *Client) GetVM(id string) (*VM, error) {
 		return nil, fmt.Errorf("failed to get VM: %w", err)
 	}
 
-	var vm VM
-	if err := json.Unmarshal(body, &vm); err != nil {
+	vm, err := unwrapData[VM](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -202,6 +228,48 @@ func (c *Client) ListVMs() (*ListVMsResponse, error) {
 	return &listResp, nil
 }
 
+// ListVMsByName lists VMs filtered by name.
+func (c *Client) ListVMsByName(name string) (*ListVMsResponse, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	path := "/vms?" + q.Encode()
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list VMs by name: %w", err)
+	}
+
+	var listResp ListVMsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// ResolveVM resolves a VM identifier to a VM ID. If idOrName already looks
+// like a VM ID (starts with "vm_") it is returned as-is. Otherwise the value
+// is treated as a name: the list VMs endpoint is queried with that name and
+// the first non-destroyed VM in the result is returned.
+func (c *Client) ResolveVM(idOrName string) (string, error) {
+	if strings.HasPrefix(idOrName, "vm_") {
+		return idOrName, nil
+	}
+
+	resp, err := c.ListVMsByName(idOrName)
+	if err != nil {
+		return "", fmt.Errorf("resolving VM name %q: %w", idOrName, err)
+	}
+
+	for _, vm := range resp.Data {
+		if vm.Status != "destroyed" {
+			return vm.ID, nil
+		}
+	}
+
+	return "", fmt.Errorf("no active VM found with name %q", idOrName)
+}
+
 // SSH retrieves SSH connection information for a VM
 func (c *Client) SSH(id string) (*SSHResponse, error) {
 	path := fmt.Sprintf("/vms/%s/ssh", id)
@@ -211,8 +279,8 @@ func (c *Client) SSH(id string) (*SSHResponse, error) {
 		return nil, fmt.Errorf("failed to get SSH info: %w", err)
 	}
 
-	var sshResp SSHResponse
-	if err := json.Unmarshal(body, &sshResp); err != nil {
+	sshResp, err := unwrapData[SSHResponse](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -240,8 +308,8 @@ func (c *Client) Start(id string) (*VM, error) {
 		return nil, fmt.Errorf("failed to start VM: %w", err)
 	}
 
-	var vm VM
-	if err := json.Unmarshal(body, &vm); err != nil {
+	vm, err := unwrapData[VM](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -257,8 +325,8 @@ func (c *Client) Stop(id string) (*VM, error) {
 		return nil, fmt.Errorf("failed to stop VM: %w", err)
 	}
 
-	var vm VM
-	if err := json.Unmarshal(body, &vm); err != nil {
+	vm, err := unwrapData[VM](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -272,8 +340,8 @@ func (c *Client) EgressGetPolicy() (*EgressModeResponse, error) {
 		return nil, fmt.Errorf("failed to get egress policy: %w", err)
 	}
 
-	var modeResp EgressModeResponse
-	if err := json.Unmarshal(body, &modeResp); err != nil {
+	modeResp, err := unwrapData[EgressModeResponse](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -324,8 +392,8 @@ func (c *Client) EgressCreateRule(req EgressRuleRequest) (*EgressRule, error) {
 		return nil, fmt.Errorf("failed to create egress rule: %w", err)
 	}
 
-	var rule EgressRule
-	if err := json.Unmarshal(body, &rule); err != nil {
+	rule, err := unwrapData[EgressRule](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -353,8 +421,8 @@ func (c *Client) VMEgressGetPolicy(vmID string) (*EgressModeResponse, error) {
 		return nil, fmt.Errorf("failed to get VM egress policy: %w", err)
 	}
 
-	var modeResp EgressModeResponse
-	if err := json.Unmarshal(body, &modeResp); err != nil {
+	modeResp, err := unwrapData[EgressModeResponse](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
 
@@ -426,8 +494,8 @@ func (c *Client) DeviceCode() (*DeviceCodeResponse, error) {
 		return nil, fmt.Errorf("failed to request device code: %w", err)
 	}
 
-	var resp DeviceCodeResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	resp, err := unwrapData[DeviceCodeResponse](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode device code response: %w", err)
 	}
 
@@ -443,8 +511,8 @@ func (c *Client) PollDevice(code string) (*PollResponse, error) {
 		return nil, fmt.Errorf("failed to poll device auth: %w", err)
 	}
 
-	var resp PollResponse
-	if err := json.Unmarshal(body, &resp); err != nil {
+	resp, err := unwrapData[PollResponse](body)
+	if err != nil {
 		return nil, fmt.Errorf("failed to decode poll response: %w", err)
 	}
 
@@ -454,6 +522,24 @@ func (c *Client) PollDevice(code string) (*PollResponse, error) {
 // makeRequest makes an HTTP request with common headers and error handling
 func (c *Client) makeRequest(method, path string, body io.Reader) ([]byte, error) {
 	reqURL := c.BaseURL + path
+
+	// Buffer the body so we can both log it and send it.
+	var reqBytes []byte
+	if body != nil && c.Debug {
+		var err error
+		reqBytes, err = io.ReadAll(body)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read request body: %w", err)
+		}
+		body = bytes.NewReader(reqBytes)
+	}
+
+	if c.Debug {
+		fmt.Fprintf(os.Stderr, ">>> %s %s\n", method, path)
+		if len(reqBytes) > 0 {
+			fmt.Fprintf(os.Stderr, "%s\n", reqBytes)
+		}
+	}
 
 	req, err := http.NewRequest(method, reqURL, body)
 	if err != nil {
@@ -474,6 +560,9 @@ func (c *Client) makeRequest(method, path string, body io.Reader) ([]byte, error
 
 	// Check for no-content response
 	if resp.StatusCode == http.StatusNoContent {
+		if c.Debug {
+			fmt.Fprintf(os.Stderr, "<<< %d (no content)\n", resp.StatusCode)
+		}
 		return nil, nil
 	}
 
@@ -481,6 +570,10 @@ func (c *Client) makeRequest(method, path string, body io.Reader) ([]byte, error
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response body: %w", err)
+	}
+
+	if c.Debug {
+		fmt.Fprintf(os.Stderr, "<<< %d\n%s\n", resp.StatusCode, respBody)
 	}
 
 	// Check for HTTP errors

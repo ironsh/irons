@@ -56,14 +56,17 @@ func init() {
 	// Global persistent flags
 	rootCmd.PersistentFlags().String("api-url", DefaultAPIURL, "API endpoint URL")
 	rootCmd.PersistentFlags().String("api-key", "", "API key for authentication")
+	rootCmd.PersistentFlags().Bool("debug-api", false, "Dump API requests and responses to stderr")
 
 	// Bind flags to environment variables
 	viper.BindPFlag("api-url", rootCmd.PersistentFlags().Lookup("api-url"))
 	viper.BindPFlag("api-key", rootCmd.PersistentFlags().Lookup("api-key"))
+	viper.BindPFlag("debug-api", rootCmd.PersistentFlags().Lookup("debug-api"))
 
 	// Set environment variable names
 	viper.BindEnv("api-url", "IRONS_API_URL")
 	viper.BindEnv("api-key", "IRONS_API_KEY")
+	viper.BindEnv("debug-api", "IRONS_DEBUG_API")
 
 	// Load config file from ~/.config/irons/config.yml (or $XDG_CONFIG_HOME).
 	// The key in the YAML file is "api_key", which we map to viper's "api-key".

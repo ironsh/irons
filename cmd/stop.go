@@ -3,9 +3,7 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // stopCmd represents the stop command
@@ -26,13 +24,16 @@ Examples:
   irons stop --async vm_abc123`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
+		idOrName := args[0]
 		async, _ := cmd.Flags().GetBool("async")
 
 		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
+
+		id, err := resolveVM(client, idOrName)
+		if err != nil {
+			return err
+		}
 
 		fmt.Printf("Stopping VM '%s'...\n", id)
 
@@ -45,7 +46,7 @@ Examples:
 			return nil
 		}
 
-		if err := waitForStatus(cmd.Context(), client, id, []string{"stopped"}); err != nil {
+		if err := waitForVMCond(cmd.Context(), client, id, statusIn("stopped")); err != nil {
 			return err
 		}
 

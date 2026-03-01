@@ -7,7 +7,6 @@ import (
 	"github.com/ironsh/irons/api"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // egressCmd represents the egress command
@@ -46,9 +45,7 @@ Examples:
 			return fmt.Errorf("only one of --host or --cidr may be specified")
 		}
 
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		req := api.EgressRuleRequest{
 			Name:    name,
@@ -79,9 +76,7 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ruleID := args[0]
 
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		if err := client.EgressDeleteRule(ruleID); err != nil {
 			return fmt.Errorf("removing egress rule: %w", err)
@@ -101,9 +96,7 @@ var egressListCmd = &cobra.Command{
 Examples:
   irons egress list`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		resp, err := client.EgressListRules()
 		if err != nil {
@@ -141,9 +134,7 @@ Examples:
   irons egress mode enforce
   irons egress mode warn`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		resp, err := client.EgressGetPolicy()
 		if err != nil {
@@ -161,9 +152,7 @@ var egressModeEnforceCmd = &cobra.Command{
 	Short: "Set egress mode to enforce",
 	Long:  `Set the egress mode to enforce. Egress traffic not matching allow rules will be blocked.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		if err := client.EgressSetPolicy("enforce"); err != nil {
 			return fmt.Errorf("setting egress mode: %w", err)
@@ -180,9 +169,7 @@ var egressModeWarnCmd = &cobra.Command{
 	Short: "Set egress mode to warn",
 	Long:  `Set the egress mode to warn. Egress traffic not matching allow rules will be logged but not blocked.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		if err := client.EgressSetPolicy("warn"); err != nil {
 			return fmt.Errorf("setting egress mode: %w", err)

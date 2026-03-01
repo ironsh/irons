@@ -4,10 +4,8 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ironsh/irons/api"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // listCmd represents the list command
@@ -23,10 +21,7 @@ Examples:
   irons list`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		// Make API call
 		resp, err := client.ListVMs()
@@ -39,10 +34,25 @@ Examples:
 			return nil
 		}
 
-		table := tablewriter.NewTable(os.Stdout)
-		table.Header([]string{"Name", "ID", "Status", "Created At"})
+		hasDetail := false
 		for _, vm := range resp.Data {
-			table.Append([]string{vm.Name, vm.ID, vm.Status, vm.CreatedAt})
+			if vm.StatusDetail != "" {
+				hasDetail = true
+				break
+			}
+		}
+
+		table := tablewriter.NewTable(os.Stdout)
+		if hasDetail {
+			table.Header([]string{"Name", "ID", "Status", "Status Detail", "Created At"})
+			for _, vm := range resp.Data {
+				table.Append([]string{vm.Name, vm.ID, vm.Status, vm.StatusDetail, vm.CreatedAt})
+			}
+		} else {
+			table.Header([]string{"Name", "ID", "Status", "Created At"})
+			for _, vm := range resp.Data {
+				table.Append([]string{vm.Name, vm.ID, vm.Status, vm.CreatedAt})
+			}
 		}
 		table.Render()
 

@@ -5,9 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // createCmd represents the create command
@@ -49,9 +47,7 @@ Examples:
 		}
 
 		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
 
 		// Show what we're creating
 		fmt.Printf("Creating VM '%s'...\n", name)
@@ -75,7 +71,7 @@ Examples:
 			return nil
 		}
 
-		if err := waitForStatus(cmd.Context(), client, resp.ID, []string{"running"}); err != nil {
+		if err := waitForVMCond(cmd.Context(), client, resp.ID, statusAndDetailEq("running", "ready")); err != nil {
 			return err
 		}
 

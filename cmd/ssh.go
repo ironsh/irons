@@ -5,9 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // sshCmd represents the ssh command
@@ -20,14 +18,17 @@ This command allows you to connect to a specific VM via SSH
 with the specified configuration and credentials.`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
+		idOrName := args[0]
 		showCommand, _ := cmd.Flags().GetBool("command")
 		strictHostKeys, _ := cmd.Flags().GetBool("strict-hostkeys")
 
 		// Create API client
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
+
+		id, err := resolveVM(client, idOrName)
+		if err != nil {
+			return err
+		}
 
 		// Get SSH connection info
 		fmt.Printf("Getting SSH connection info for VM '%s'...\n", id)
@@ -51,11 +52,6 @@ with the specified configuration and credentials.`,
 		}
 
 		sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", resp.Username, resp.Host))
-
-		// If there's a specific command, add it
-		if resp.Command != "" {
-			sshArgs = append(sshArgs, resp.Command)
-		}
 
 		// If --command flag is set, just output the command
 		if showCommand {

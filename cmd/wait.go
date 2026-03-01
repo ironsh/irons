@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/ironsh/irons/api"
@@ -15,13 +14,28 @@ const (
 	pollTimeout  = 10 * time.Minute
 )
 
-// waitForStatus polls the VM status until it matches one of the expected
-// statuses, until the timeout is exceeded, or until ctx is cancelled. It
-// prints progress to stdout.
-func waitForStatus(ctx context.Context, client *api.Client, id string, expected []string) error {
+// statusIn returns a condition func that is satisfied when the VM's status
+// matches one of the provided values.
+func statusIn(statuses ...string) func(*api.VM) bool {
+	return func(vm *api.VM) bool {
+		return slices.Contains(statuses, vm.Status)
+	}
+}
+
+// statusAndDetailEq returns a condition func that is satisfied when the VM's
+// status matches the provided status and status detail matches the provided detail.
+func statusAndDetailEq(status string, detail string) func(*api.VM) bool {
+	return func(vm *api.VM) bool {
+		return vm.Status == status && vm.StatusDetail == detail
+	}
+}
+
+// waitForVMCond polls the VM until cond returns true, the timeout is
+// exceeded, or ctx is cancelled. It prints progress to stdout.
+func waitForVMCond(ctx context.Context, client *api.Client, id string, cond func(*api.VM) bool) error {
 	deadline := time.Now().Add(pollTimeout)
 
-	fmt.Printf("Waiting for VM '%s' to be %s", id, strings.Join(expected, " or "))
+	fmt.Printf("Waiting for VM '%s'", id)
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
@@ -29,8 +43,7 @@ func waitForStatus(ctx context.Context, client *api.Client, id string, expected 
 	for {
 		if time.Now().After(deadline) {
 			fmt.Println()
-			return fmt.Errorf("timed out after %s waiting for VM '%s' to be %s",
-				pollTimeout, id, strings.Join(expected, " or "))
+			return fmt.Errorf("timed out after %s waiting for VM '%s'", pollTimeout, id)
 		}
 
 		resp, err := client.GetVM(id)
@@ -40,7 +53,7 @@ func waitForStatus(ctx context.Context, client *api.Client, id string, expected 
 		} else if resp.Status == "failed" {
 			fmt.Println()
 			return fmt.Errorf("VM '%s' entered failed state", id)
-		} else if slices.Contains(expected, resp.Status) {
+		} else if cond(resp) {
 			fmt.Println()
 			return nil
 		} else {
@@ -51,8 +64,7 @@ func waitForStatus(ctx context.Context, client *api.Client, id string, expected 
 		select {
 		case <-ctx.Done():
 			fmt.Println()
-			return fmt.Errorf("cancelled while waiting for VM '%s' to be %s: %w",
-				id, strings.Join(expected, " or "), ctx.Err())
+			return fmt.Errorf("cancelled while waiting for VM '%s': %w", id, ctx.Err())
 		case <-ticker.C:
 		}
 	}

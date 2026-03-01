@@ -5,9 +5,7 @@ import (
 	"os"
 	"os/exec"
 
-	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 var forwardCmd = &cobra.Command{
@@ -23,7 +21,7 @@ Example:
   irons forward vm_abc123 --remote-port 3000 --local-port 8080`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		id := args[0]
+		idOrName := args[0]
 
 		remotePort, _ := cmd.Flags().GetInt("remote-port")
 		localPort, _ := cmd.Flags().GetInt("local-port")
@@ -38,9 +36,12 @@ Example:
 			localPort = remotePort
 		}
 
-		apiURL := viper.GetString("api-url")
-		apiKey := viper.GetString("api-key")
-		client := api.NewClient(apiURL, apiKey)
+		client := newClient()
+
+		id, err := resolveVM(client, idOrName)
+		if err != nil {
+			return err
+		}
 
 		fmt.Printf("Getting SSH connection info for VM '%s'...\n", id)
 
