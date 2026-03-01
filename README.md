@@ -30,17 +30,22 @@ go install github.com/ironsh/irons@latest
 
 ## Authentication
 
-All commands require an API key. Set it via environment variable (recommended):
+Log in once with your IronCD account:
 
 ```sh
-export IRONS_API_KEY=your-api-key
+irons login
 ```
 
-Or pass it directly with `--api-key`. By default, `irons` talks to `https://elrond.ironcd.com` — override with `IRONS_API_URL` or `--api-url`.
+This opens a browser-based authorization flow and saves your API token to `~/.config/irons/config.yml`. All subsequent commands will use it automatically.
+
+You can also supply your key via the `IRONS_API_KEY` environment variable or the `--api-key` flag, which take precedence over the config file.
 
 ## Quick Start
 
 ```sh
+# Log in
+irons login
+
 # Create a sandbox and wait until it's ready
 irons create my-sandbox
 
