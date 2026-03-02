@@ -365,9 +365,17 @@ func (c *Client) EgressSetPolicy(mode string) error {
 	return nil
 }
 
-// EgressListRules lists all egress rules for the account
-func (c *Client) EgressListRules() (*ListEgressRulesResponse, error) {
-	body, err := c.makeRequest("GET", "/egress/rules", nil)
+// EgressListRules lists a single page of egress rules. When cursor is
+// non-empty the request is made with that cursor so the next page is returned.
+func (c *Client) EgressListRules(cursor string) (*ListEgressRulesResponse, error) {
+	path := "/egress/rules"
+	if cursor != "" {
+		q := url.Values{}
+		q.Set("cursor", cursor)
+		path += "?" + q.Encode()
+	}
+
+	body, err := c.makeRequest("GET", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list egress rules: %w", err)
 	}

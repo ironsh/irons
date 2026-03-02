@@ -34,6 +34,24 @@ func newClient() *api.Client {
 	)
 }
 
+// paginate drives cursor-based pagination. It calls fetchPage in a loop,
+// passing the cursor returned by each page, until hasMore is false. fetchPage
+// receives an empty string on the first call.
+func paginate(fetchPage func(cursor string) (nextCursor string, hasMore bool, err error)) error {
+	var cursor string
+	for {
+		next, hasMore, err := fetchPage(cursor)
+		if err != nil {
+			return err
+		}
+		if !hasMore {
+			break
+		}
+		cursor = next
+	}
+	return nil
+}
+
 // resolveVM resolves a VM name or ID to a VM ID using the provided client.
 // If idOrName starts with "vm_" it is returned unchanged. Otherwise the list
 // VMs endpoint is queried by name and the first non-destroyed VM's ID is

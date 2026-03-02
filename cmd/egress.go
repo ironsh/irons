@@ -98,27 +98,39 @@ Examples:
 	RunE: func(cmd *cobra.Command, args []string) error {
 		client := newClient()
 
-		resp, err := client.EgressListRules()
+		table := tablewriter.NewTable(os.Stdout)
+		table.Header([]string{"ID", "Name", "Host/CIDR", "Comment"})
+
+		var total int
+		err := paginate(func(cursor string) (string, bool, error) {
+			resp, err := client.EgressListRules(cursor)
+			if err != nil {
+				return "", false, fmt.Errorf("listing egress rules: %w", err)
+			}
+			for _, r := range resp.Data {
+				target := r.Host
+				if target == "" {
+					target = r.CIDR
+				}
+				table.Append([]string{r.ID, r.Name, target, r.Comment})
+			}
+			total += len(resp.Data)
+			var next string
+			if resp.Cursor != nil {
+				next = *resp.Cursor
+			}
+			return next, resp.HasMore, nil
+		})
 		if err != nil {
-			return fmt.Errorf("listing egress rules: %w", err)
+			return err
 		}
 
-		if len(resp.Data) == 0 {
+		if total == 0 {
 			fmt.Println("No egress rules found.")
 			return nil
 		}
 
-		table := tablewriter.NewTable(os.Stdout)
-		table.Header([]string{"ID", "Name", "Host/CIDR", "Comment"})
-		for _, r := range resp.Data {
-			target := r.Host
-			if target == "" {
-				target = r.CIDR
-			}
-			table.Append([]string{r.ID, r.Name, target, r.Comment})
-		}
 		table.Render()
-
 		return nil
 	},
 }
