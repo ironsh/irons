@@ -31,6 +31,7 @@ func newClient() *api.Client {
 		viper.GetString("api-url"),
 		viper.GetString("api-key"),
 		viper.GetBool("debug-api"),
+		viper.GetBool("debug-tls-skip-verify"),
 	)
 }
 

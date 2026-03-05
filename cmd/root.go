@@ -54,16 +54,19 @@ func init() {
 	rootCmd.PersistentFlags().String("api-url", DefaultAPIURL, "API endpoint URL")
 	rootCmd.PersistentFlags().String("api-key", "", "API key for authentication")
 	rootCmd.PersistentFlags().Bool("debug-api", false, "Dump API requests and responses to stderr")
+	rootCmd.PersistentFlags().Bool("debug-tls-skip-verify", false, "Disable TLS certificate verification (insecure, for debugging only)")
 
 	// Bind flags to environment variables
 	viper.BindPFlag("api-url", rootCmd.PersistentFlags().Lookup("api-url"))
 	viper.BindPFlag("api-key", rootCmd.PersistentFlags().Lookup("api-key"))
 	viper.BindPFlag("debug-api", rootCmd.PersistentFlags().Lookup("debug-api"))
+	viper.BindPFlag("debug-tls-skip-verify", rootCmd.PersistentFlags().Lookup("debug-tls-skip-verify"))
 
 	// Set environment variable names
 	viper.BindEnv("api-url", "IRONS_API_URL")
 	viper.BindEnv("api-key", "IRONS_API_KEY")
 	viper.BindEnv("debug-api", "IRONS_DEBUG_API")
+	viper.BindEnv("debug-tls-skip-verify", "IRONS_DEBUG_TLS_SKIP_VERIFY")
 
 	// Load the API key from ~/.config/irons/config.yml (written by `irons login`).
 	// A flag or environment variable always takes precedence over the config file.

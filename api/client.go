@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,10 +15,11 @@ import (
 
 // Client represents the API client for VM operations
 type Client struct {
-	BaseURL    string
-	APIKey     string
-	Debug      bool
-	HTTPClient *http.Client
+	BaseURL     string
+	APIKey      string
+	Debug       bool
+	InsecureTLS bool
+	HTTPClient  *http.Client
 }
 
 // NewClient creates a new API client
@@ -32,9 +34,15 @@ func NewClient(baseURL, apiKey string) *Client {
 }
 
 // NewClientDebug creates a new API client with debug logging enabled
-func NewClientDebug(baseURL, apiKey string, debug bool) *Client {
+func NewClientDebug(baseURL, apiKey string, debug, insecureTLS bool) *Client {
 	c := NewClient(baseURL, apiKey)
 	c.Debug = debug
+	if insecureTLS {
+		c.InsecureTLS = true
+		c.HTTPClient.Transport = &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}
+	}
 	return c
 }
 
