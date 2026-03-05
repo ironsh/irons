@@ -134,6 +134,41 @@ type AuditEgressParams struct {
 	Cursor  string
 }
 
+// Secret represents a secret resource returned by the API.
+type Secret struct {
+	ID         string  `json:"id"`
+	Name       string  `json:"name"`
+	Provider   string  `json:"provider"`
+	EnvVar     string  `json:"env_var"`
+	ProxyValue string  `json:"proxy_value"`
+	Comment    *string `json:"comment,omitempty"`
+	CreatedAt  string  `json:"created_at"`
+	UpdatedAt  string  `json:"updated_at"`
+}
+
+// CreateSecretRequest represents the request payload for creating a secret.
+type CreateSecretRequest struct {
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Secret   string `json:"secret"`
+	EnvVar   string `json:"env_var"`
+	Comment  string `json:"comment,omitempty"`
+}
+
+// UpdateSecretRequest represents the request payload for updating a secret.
+type UpdateSecretRequest struct {
+	Secret  string `json:"secret,omitempty"`
+	EnvVar  string `json:"env_var,omitempty"`
+	Comment string `json:"comment,omitempty"`
+}
+
+// ListSecretsResponse represents the paginated response from listing secrets.
+type ListSecretsResponse struct {
+	Data    []Secret `json:"data"`
+	HasMore bool     `json:"has_more"`
+	Cursor  *string  `json:"cursor,omitempty"`
+}
+
 // DeviceCodeResponse represents the response from POST /auth/device/code
 type DeviceCodeResponse struct {
 	Code            string    `json:"code"`
@@ -517,6 +552,131 @@ func (c *Client) PollDevice(code string) (*PollResponse, error) {
 	}
 
 	return &resp, nil
+}
+
+// SecretsCreate creates a new secret.
+func (c *Client) SecretsCreate(req CreateSecretRequest) (*Secret, error) {
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	body, err := c.makeRequest("POST", "/secrets", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create secret: %w", err)
+	}
+
+	secret, err := unwrapData[Secret](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &secret, nil
+}
+
+// SecretsList lists all secrets.
+func (c *Client) SecretsList() (*ListSecretsResponse, error) {
+	body, err := c.makeRequest("GET", "/secrets", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secrets: %w", err)
+	}
+
+	var listResp ListSecretsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// SecretsListByName lists secrets filtered by name.
+func (c *Client) SecretsListByName(name string) (*ListSecretsResponse, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	path := "/secrets?" + q.Encode()
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secrets by name: %w", err)
+	}
+
+	var listResp ListSecretsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// SecretsGet retrieves a single secret by ID.
+func (c *Client) SecretsGet(id string) (*Secret, error) {
+	path := fmt.Sprintf("/secrets/%s", id)
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret: %w", err)
+	}
+
+	secret, err := unwrapData[Secret](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &secret, nil
+}
+
+// SecretsUpdate updates a secret by ID.
+func (c *Client) SecretsUpdate(id string, req UpdateSecretRequest) (*Secret, error) {
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	path := fmt.Sprintf("/secrets/%s", id)
+	body, err := c.makeRequest("PATCH", path, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to update secret: %w", err)
+	}
+
+	secret, err := unwrapData[Secret](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &secret, nil
+}
+
+// SecretsDelete deletes a secret by ID.
+func (c *Client) SecretsDelete(id string) error {
+	path := fmt.Sprintf("/secrets/%s", id)
+
+	_, err := c.makeRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete secret: %w", err)
+	}
+
+	return nil
+}
+
+// ResolveSecret resolves a secret identifier to a secret ID. If idOrName
+// starts with "sec_" it is returned as-is. Otherwise the value is treated as
+// a name: the list secrets endpoint is queried with that name and the first
+// match is returned.
+func (c *Client) ResolveSecret(idOrName string) (string, error) {
+	if strings.HasPrefix(idOrName, "sec_") {
+		return idOrName, nil
+	}
+
+	resp, err := c.SecretsListByName(idOrName)
+	if err != nil {
+		return "", fmt.Errorf("resolving secret name %q: %w", idOrName, err)
+	}
+
+	if len(resp.Data) == 0 {
+		return "", fmt.Errorf("no secret found with name %q", idOrName)
+	}
+
+	return resp.Data[0].ID, nil
 }
 
 // makeRequest makes an HTTP request with common headers and error handling
