@@ -10,17 +10,23 @@ import (
 
 // sshCmd represents the ssh command
 var sshCmd = &cobra.Command{
-	Use:   "ssh ID",
+	Use:   "ssh ID [command...]",
 	Short: "SSH into a VM",
 	Long: `SSH into a VM to execute commands or open an interactive session.
 
 This command allows you to connect to a specific VM via SSH
-with the specified configuration and credentials.`,
-	Args: cobra.ExactArgs(1),
+with the specified configuration and credentials.
+
+Optionally, pass a command to execute on the remote VM:
+  irons ssh myvm scc
+  irons ssh myvm scc 1
+  irons ssh myvm -- ls -la`,
+	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		idOrName := args[0]
 		showCommand, _ := cmd.Flags().GetBool("command")
 		strictHostKeys, _ := cmd.Flags().GetBool("strict-hostkeys")
+		forceTTY, _ := cmd.Flags().GetBool("tty")
 
 		// Create API client
 		client := newClient()
@@ -51,7 +57,15 @@ with the specified configuration and credentials.`,
 			)
 		}
 
+		remoteCmd := args[1:]
+		if forceTTY {
+			sshArgs = append(sshArgs, "-t")
+		}
+
 		sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", resp.Username, resp.Host))
+
+		// Append remote command as varargs (mimics ssh behavior)
+		sshArgs = append(sshArgs, remoteCmd...)
 
 		// If --command flag is set, just output the command
 		if showCommand {
@@ -86,4 +100,5 @@ func init() {
 	// Define flags
 	sshCmd.Flags().BoolP("command", "c", false, "Output SSH command instead of executing it")
 	sshCmd.Flags().Bool("strict-hostkeys", false, "Enable strict host key checking (disabled by default)")
+	sshCmd.Flags().BoolP("tty", "t", false, "Force pseudo-TTY allocation (useful for interactive commands like tmux)")
 }
