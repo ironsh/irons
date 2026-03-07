@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/ironsh/irons/api"
-	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -68,14 +67,14 @@ func TestSecretsAdd_AllFlags(t *testing.T) {
 		"--secret", "ghp_abc123",
 	)
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "IRONSH_PROXY_github-main")
-	assert.Contains(t, res.Stdout, "GITHUB_TOKEN")
+	require.Contains(t, res.Stdout, "IRONSH_PROXY_github-main")
+	require.Contains(t, res.Stdout, "GITHUB_TOKEN")
 
 	bodies := ms.RequestBodies("POST", "/secrets")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "github-main", bodies[0]["name"])
-	assert.Equal(t, "ghp_abc123", bodies[0]["secret"])
-	assert.Equal(t, "GITHUB_TOKEN", bodies[0]["env_var"])
+	require.Equal(t, "github-main", bodies[0]["name"])
+	require.Equal(t, "ghp_abc123", bodies[0]["secret"])
+	require.Equal(t, "GITHUB_TOKEN", bodies[0]["env_var"])
 }
 
 func TestSecretsAdd_WithHosts(t *testing.T) {
@@ -91,11 +90,11 @@ func TestSecretsAdd_WithHosts(t *testing.T) {
 		"--host", "*.github.com",
 	)
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "api.github.com, *.github.com")
+	require.Contains(t, res.Stdout, "api.github.com, *.github.com")
 
 	bodies := ms.RequestBodies("POST", "/secrets")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, []interface{}{"api.github.com", "*.github.com"}, bodies[0]["hosts"])
+	require.Equal(t, []interface{}{"api.github.com", "*.github.com"}, bodies[0]["hosts"])
 }
 
 func TestSecretsAdd_WithoutHost(t *testing.T) {
@@ -112,7 +111,7 @@ func TestSecretsAdd_WithoutHost(t *testing.T) {
 	bodies := ms.RequestBodies("POST", "/secrets")
 	require.Len(t, bodies, 1)
 	_, hasHosts := bodies[0]["hosts"]
-	assert.False(t, hasHosts, "hosts should not be sent when --host is not specified")
+	require.False(t, hasHosts, "hosts should not be sent when --host is not specified")
 }
 
 func TestSecretsAdd_MissingName(t *testing.T) {
@@ -122,8 +121,8 @@ func TestSecretsAdd_MissingName(t *testing.T) {
 		"--env-var", "TOKEN",
 		"--secret", "x",
 	)
-	assert.NotEqual(t, 0, res.ExitCode)
-	assert.Contains(t, res.Stderr, "--name is required")
+	require.NotEqual(t, 0, res.ExitCode)
+	require.Contains(t, res.Stderr, "--name is required")
 }
 
 func TestSecretsAdd_MissingEnvVar(t *testing.T) {
@@ -133,8 +132,8 @@ func TestSecretsAdd_MissingEnvVar(t *testing.T) {
 		"--name", "test",
 		"--secret", "x",
 	)
-	assert.NotEqual(t, 0, res.ExitCode)
-	assert.Contains(t, res.Stderr, "--env-var is required")
+	require.NotEqual(t, 0, res.ExitCode)
+	require.Contains(t, res.Stderr, "--env-var is required")
 }
 
 func TestSecretsAdd_WithComment(t *testing.T) {
@@ -150,11 +149,11 @@ func TestSecretsAdd_WithComment(t *testing.T) {
 		"--comment", "CI publish token",
 	)
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "CI publish token")
+	require.Contains(t, res.Stdout, "CI publish token")
 
 	bodies := ms.RequestBodies("POST", "/secrets")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "CI publish token", bodies[0]["comment"])
+	require.Equal(t, "CI publish token", bodies[0]["comment"])
 }
 
 func TestSecretsAdd_PipedStdin(t *testing.T) {
@@ -170,7 +169,7 @@ func TestSecretsAdd_PipedStdin(t *testing.T) {
 
 	bodies := ms.RequestBodies("POST", "/secrets")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "ghp_from_pipe", bodies[0]["secret"])
+	require.Equal(t, "ghp_from_pipe", bodies[0]["secret"])
 }
 
 // --- secrets list ---
@@ -181,14 +180,14 @@ func TestSecretsList(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "list")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "github-main")
-	assert.Contains(t, res.Stdout, "GITHUB_TOKEN")
-	assert.Contains(t, res.Stdout, "IRONSH_PROXY_github-main")
+	require.Contains(t, res.Stdout, "github-main")
+	require.Contains(t, res.Stdout, "GITHUB_TOKEN")
+	require.Contains(t, res.Stdout, "IRONSH_PROXY_github-main")
 	// Table headers
-	assert.Contains(t, res.Stdout, "NAME")
-	assert.Contains(t, res.Stdout, "ENV VAR")
-	assert.Contains(t, res.Stdout, "HOSTS")
-	assert.Contains(t, res.Stdout, "PROXY VALUE")
+	require.Contains(t, res.Stdout, "NAME")
+	require.Contains(t, res.Stdout, "ENV VAR")
+	require.Contains(t, res.Stdout, "HOSTS")
+	require.Contains(t, res.Stdout, "PROXY VALUE")
 }
 
 func TestSecretsList_Empty(t *testing.T) {
@@ -196,7 +195,7 @@ func TestSecretsList_Empty(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "list")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "No secrets found")
+	require.Contains(t, res.Stdout, "No secrets found")
 }
 
 // --- secrets show ---
@@ -210,10 +209,10 @@ func TestSecretsShow_ByName(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "show", "github-main")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "github-main")
-	assert.Contains(t, res.Stdout, "GITHUB_TOKEN")
-	assert.Contains(t, res.Stdout, "IRONSH_PROXY_github-main")
-	assert.NotContains(t, res.Stdout, "ghp_") // never display secret value
+	require.Contains(t, res.Stdout, "github-main")
+	require.Contains(t, res.Stdout, "GITHUB_TOKEN")
+	require.Contains(t, res.Stdout, "IRONSH_PROXY_github-main")
+	require.NotContains(t, res.Stdout, "ghp_") // never display secret value
 }
 
 func TestSecretsShow_ByID(t *testing.T) {
@@ -224,10 +223,10 @@ func TestSecretsShow_ByID(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "show", "sec_m4xk9wp2")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "sec_m4xk9wp2")
-	assert.Contains(t, res.Stdout, "GITHUB_TOKEN")
+	require.Contains(t, res.Stdout, "sec_m4xk9wp2")
+	require.Contains(t, res.Stdout, "GITHUB_TOKEN")
 	// Should not hit list endpoint for ID lookups
-	assert.False(t, ms.HasRequest("GET", "/secrets"))
+	require.False(t, ms.HasRequest("GET", "/secrets"))
 }
 
 func TestSecretsShow_DisplaysHosts(t *testing.T) {
@@ -239,7 +238,7 @@ func TestSecretsShow_DisplaysHosts(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "show", "sec_m4xk9wp2")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, "api.github.com, *.github.com")
+	require.Contains(t, res.Stdout, "api.github.com, *.github.com")
 }
 
 // --- secrets update ---
@@ -257,7 +256,7 @@ func TestSecretsUpdate_WithSecret(t *testing.T) {
 
 	bodies := ms.RequestBodies("PATCH", "/secrets/sec_m4xk9wp2")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "ghp_newtoken789", bodies[0]["secret"])
+	require.Equal(t, "ghp_newtoken789", bodies[0]["secret"])
 }
 
 func TestSecretsUpdate_WithHosts(t *testing.T) {
@@ -276,7 +275,7 @@ func TestSecretsUpdate_WithHosts(t *testing.T) {
 
 	bodies := ms.RequestBodies("PATCH", "/secrets/sec_m4xk9wp2")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, []interface{}{"api.github.com", "*.github.com"}, bodies[0]["hosts"])
+	require.Equal(t, []interface{}{"api.github.com", "*.github.com"}, bodies[0]["hosts"])
 }
 
 func TestSecretsUpdate_EnvVar(t *testing.T) {
@@ -293,7 +292,7 @@ func TestSecretsUpdate_EnvVar(t *testing.T) {
 
 	bodies := ms.RequestBodies("PATCH", "/secrets/sec_m4xk9wp2")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "GH_TOKEN", bodies[0]["env_var"])
+	require.Equal(t, "GH_TOKEN", bodies[0]["env_var"])
 }
 
 func TestSecretsUpdate_PipedStdin(t *testing.T) {
@@ -309,7 +308,7 @@ func TestSecretsUpdate_PipedStdin(t *testing.T) {
 
 	bodies := ms.RequestBodies("PATCH", "/secrets/sec_m4xk9wp2")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "new_secret_value", bodies[0]["secret"])
+	require.Equal(t, "new_secret_value", bodies[0]["secret"])
 }
 
 // --- secrets remove ---
@@ -323,8 +322,8 @@ func TestSecretsRemove_ByName(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "remove", "github-main")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, `"github-main" removed`)
-	assert.True(t, ms.HasRequest("DELETE", "/secrets/sec_m4xk9wp2"))
+	require.Contains(t, res.Stdout, `"github-main" removed`)
+	require.True(t, ms.HasRequest("DELETE", "/secrets/sec_m4xk9wp2"))
 }
 
 func TestSecretsRemove_ByID(t *testing.T) {
@@ -334,9 +333,9 @@ func TestSecretsRemove_ByID(t *testing.T) {
 
 	res := runCLI(t, ms, "secrets", "remove", "sec_m4xk9wp2")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
-	assert.Contains(t, res.Stdout, `"sec_m4xk9wp2" removed`)
-	assert.True(t, ms.HasRequest("DELETE", "/secrets/sec_m4xk9wp2"))
-	assert.False(t, ms.HasRequest("GET", "/secrets"), "should not hit list for ID")
+	require.Contains(t, res.Stdout, `"sec_m4xk9wp2" removed`)
+	require.True(t, ms.HasRequest("DELETE", "/secrets/sec_m4xk9wp2"))
+	require.False(t, ms.HasRequest("GET", "/secrets"), "should not hit list for ID")
 }
 
 func TestSecretsRemove_Nonexistent(t *testing.T) {
@@ -345,8 +344,8 @@ func TestSecretsRemove_Nonexistent(t *testing.T) {
 	})
 
 	res := runCLI(t, ms, "secrets", "remove", "nonexistent")
-	assert.NotEqual(t, 0, res.ExitCode)
-	assert.Contains(t, res.Stderr, "no secret found")
+	require.NotEqual(t, 0, res.ExitCode)
+	require.Contains(t, res.Stderr, "no secret found")
 }
 
 // --- secrets show: never displays secret value ---
@@ -376,9 +375,9 @@ func TestSecretsAPI_Create(t *testing.T) {
 
 	got, err := client.SecretsCreate(req)
 	require.NoError(t, err)
-	assert.Equal(t, "sec_m4xk9wp2", got.ID)
-	assert.Equal(t, "IRONSH_PROXY_github-main", got.ProxyValue)
-	assert.Equal(t, []string{"*"}, got.Hosts)
+	require.Equal(t, "sec_m4xk9wp2", got.ID)
+	require.Equal(t, "IRONSH_PROXY_github-main", got.ProxyValue)
+	require.Equal(t, []string{"*"}, got.Hosts)
 }
 
 func TestSecretsAPI_ResolveByName(t *testing.T) {
@@ -387,7 +386,7 @@ func TestSecretsAPI_ResolveByName(t *testing.T) {
 
 	id, err := client.ResolveSecret("github-main")
 	require.NoError(t, err)
-	assert.Equal(t, "sec_m4xk9wp2", id)
+	require.Equal(t, "sec_m4xk9wp2", id)
 }
 
 func TestSecretsAPI_ResolveByID(t *testing.T) {
@@ -396,8 +395,8 @@ func TestSecretsAPI_ResolveByID(t *testing.T) {
 
 	id, err := client.ResolveSecret("sec_m4xk9wp2")
 	require.NoError(t, err)
-	assert.Equal(t, "sec_m4xk9wp2", id)
-	assert.Empty(t, ms.Requests(), "should not make any API calls for ID resolution")
+	require.Equal(t, "sec_m4xk9wp2", id)
+	require.Empty(t, ms.Requests(), "should not make any API calls for ID resolution")
 }
 
 func TestSecretsAPI_Delete(t *testing.T) {
@@ -406,7 +405,7 @@ func TestSecretsAPI_Delete(t *testing.T) {
 
 	err := client.SecretsDelete("sec_m4xk9wp2")
 	require.NoError(t, err)
-	assert.True(t, ms.HasRequest("DELETE", "/secrets/sec_m4xk9wp2"))
+	require.True(t, ms.HasRequest("DELETE", "/secrets/sec_m4xk9wp2"))
 }
 
 func TestSecretsAPI_List(t *testing.T) {
@@ -416,8 +415,8 @@ func TestSecretsAPI_List(t *testing.T) {
 	resp, err := client.SecretsList()
 	require.NoError(t, err)
 	require.Len(t, resp.Data, 1)
-	assert.Equal(t, "github-main", resp.Data[0].Name)
-	assert.Equal(t, []string{"*"}, resp.Data[0].Hosts)
+	require.Equal(t, "github-main", resp.Data[0].Name)
+	require.Equal(t, []string{"*"}, resp.Data[0].Hosts)
 }
 
 func TestSecretsAPI_Update(t *testing.T) {
@@ -433,8 +432,8 @@ func TestSecretsAPI_Update(t *testing.T) {
 
 	bodies := ms.RequestBodies("PATCH", "/secrets/sec_m4xk9wp2")
 	require.Len(t, bodies, 1)
-	assert.Equal(t, "new-value", bodies[0]["secret"])
-	assert.Equal(t, "NEW_VAR", bodies[0]["env_var"])
+	require.Equal(t, "new-value", bodies[0]["secret"])
+	require.Equal(t, "NEW_VAR", bodies[0]["env_var"])
 }
 
 // --- output content tests ---
@@ -459,11 +458,11 @@ func TestSecretsList_TableColumns(t *testing.T) {
 		}
 	}
 	require.NotEmpty(t, headerLine, "should have a header line")
-	assert.Contains(t, headerLine, "ENV VAR")
-	assert.Contains(t, headerLine, "HOSTS")
-	assert.Contains(t, headerLine, "PROXY VALUE")
-	assert.Contains(t, headerLine, "CREATED")
+	require.Contains(t, headerLine, "ENV VAR")
+	require.Contains(t, headerLine, "HOSTS")
+	require.Contains(t, headerLine, "PROXY VALUE")
+	require.Contains(t, headerLine, "CREATED")
 	// Check data rows
-	assert.Contains(t, res.Stdout, "npm-token")
-	assert.Contains(t, res.Stdout, "registry.npmjs.org")
+	require.Contains(t, res.Stdout, "npm-token")
+	require.Contains(t, res.Stdout, "registry.npmjs.org")
 }
