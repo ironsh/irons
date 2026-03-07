@@ -11,7 +11,7 @@
 ### Install Script (recommended)
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ironsh/irons/main/install.sh | bash
+curl -fsSL https://install.iron.sh | bash
 ```
 
 ### Download Binary
