@@ -18,9 +18,8 @@ This command allows you to connect to a specific VM via SSH
 with the specified configuration and credentials.
 
 Optionally, pass a command to execute on the remote VM:
-  irons ssh myvm scc
-  irons ssh myvm scc 1
-  irons ssh myvm -- ls -la`,
+  irons ssh myvm ls -la
+  irons ssh -t myvm tmux attach`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		idOrName := args[0]
