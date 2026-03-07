@@ -31,7 +31,7 @@ var secretsListCmd = &cobra.Command{
 	Short: "List all secrets",
 	Long: `List all secrets on the account.
 
-Displays a table with name, provider, env var, proxy value, and creation date.
+Displays a table with name, env var, hosts, proxy value, and creation date.
 Never displays the secret value.
 
 Examples:
@@ -51,9 +51,9 @@ Examples:
 		}
 
 		table := tablewriter.NewTable(os.Stdout)
-		table.Header([]string{"Name", "Provider", "Env Var", "Proxy Value", "Created"})
+		table.Header([]string{"Name", "Env Var", "Hosts", "Proxy Value", "Created"})
 		for _, s := range resp.Data {
-			table.Append([]string{s.Name, s.Provider, s.EnvVar, s.ProxyValue, s.CreatedAt})
+			table.Append([]string{s.Name, s.EnvVar, formatHosts(s.Hosts), s.ProxyValue, s.CreatedAt})
 		}
 		table.Render()
 
@@ -71,24 +71,18 @@ If --secret is not provided, the CLI will prompt for the value interactively
 with echo disabled, or read from stdin if input is piped.
 
 Examples:
-  irons secrets add --name github-main --provider github --env-var GITHUB_TOKEN --secret ghp_abc123
-  irons secrets add --name github-main --provider github --env-var GITHUB_TOKEN`,
+  irons secrets add --name github-main --env-var GITHUB_TOKEN --secret ghp_abc123
+  irons secrets add --name github-main --env-var GITHUB_TOKEN
+  irons secrets add --name github-main --env-var GITHUB_TOKEN --host api.github.com --host "*.github.com"`,
 	Args: cobra.NoArgs,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		name, _ := cmd.Flags().GetString("name")
-		provider, _ := cmd.Flags().GetString("provider")
 		envVar, _ := cmd.Flags().GetString("env-var")
 		secret, _ := cmd.Flags().GetString("secret")
 		comment, _ := cmd.Flags().GetString("comment")
 
 		if name == "" {
 			return fmt.Errorf("--name is required")
-		}
-		if provider == "" {
-			return fmt.Errorf("--provider is required")
-		}
-		if provider != "github" && provider != "npm" {
-			return fmt.Errorf("unsupported provider %q (must be github or npm)", provider)
 		}
 		if envVar == "" {
 			return fmt.Errorf("--env-var is required")
@@ -105,11 +99,14 @@ Examples:
 		client := newClient()
 
 		req := api.CreateSecretRequest{
-			Name:     name,
-			Provider: provider,
-			Secret:   secret,
-			EnvVar:   envVar,
-			Comment:  comment,
+			Name:    name,
+			Secret:  secret,
+			EnvVar:  envVar,
+			Comment: comment,
+		}
+		if cmd.Flags().Changed("host") {
+			hosts, _ := cmd.Flags().GetStringArray("host")
+			req.Hosts = hosts
 		}
 
 		s, err := client.SecretsCreate(req)
@@ -158,7 +155,7 @@ Examples:
 var secretsUpdateCmd = &cobra.Command{
 	Use:   "update <name|id>",
 	Short: "Update a secret",
-	Long: `Update a secret's value, env var, or comment.
+	Long: `Update a secret's value, env var, hosts, or comment.
 
 If --secret is not provided and no other flags are set, the CLI will prompt
 for a new secret value interactively.
@@ -166,20 +163,23 @@ for a new secret value interactively.
 Examples:
   irons secrets update github-main --secret ghp_newtoken789
   irons secrets update github-main --env-var GH_TOKEN
+  irons secrets update github-main --host api.github.com --host "*.github.com"
   irons secrets update github-main`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		idOrName := args[0]
 		secret, _ := cmd.Flags().GetString("secret")
 		envVar, _ := cmd.Flags().GetString("env-var")
+		hosts, _ := cmd.Flags().GetStringArray("host")
 		comment, _ := cmd.Flags().GetString("comment")
 
 		secretSet := cmd.Flags().Changed("secret")
 		envVarSet := cmd.Flags().Changed("env-var")
+		hostsSet := cmd.Flags().Changed("host")
 		commentSet := cmd.Flags().Changed("comment")
 
 		// If no flags at all, prompt for secret value
-		if !secretSet && !envVarSet && !commentSet {
+		if !secretSet && !envVarSet && !hostsSet && !commentSet {
 			var err error
 			secret, err = readSecret()
 			if err != nil {
@@ -201,6 +201,9 @@ Examples:
 		}
 		if envVarSet {
 			req.EnvVar = envVar
+		}
+		if hostsSet {
+			req.Hosts = hosts
 		}
 		if commentSet {
 			req.Comment = comment
@@ -252,14 +255,22 @@ func printSecretDetail(s *api.Secret) {
 	fmt.Printf("\n✓ Secret:\n")
 	fmt.Printf("  ID:          %s\n", s.ID)
 	fmt.Printf("  Name:        %s\n", s.Name)
-	fmt.Printf("  Provider:    %s\n", s.Provider)
 	fmt.Printf("  Env Var:     %s\n", s.EnvVar)
+	fmt.Printf("  Hosts:       %s\n", formatHosts(s.Hosts))
 	fmt.Printf("  Proxy Value: %s\n", s.ProxyValue)
 	if s.Comment != nil && *s.Comment != "" {
 		fmt.Printf("  Comment:     %s\n", *s.Comment)
 	}
 	fmt.Printf("  Created:     %s\n", s.CreatedAt)
 	fmt.Printf("  Updated:     %s\n", s.UpdatedAt)
+}
+
+// formatHosts formats a hosts slice for display.
+func formatHosts(hosts []string) string {
+	if len(hosts) == 0 {
+		return "*"
+	}
+	return strings.Join(hosts, ", ")
 }
 
 // resolveSecret resolves a secret name or ID to a secret ID.
@@ -325,13 +336,14 @@ func init() {
 
 	// Flags for add command
 	secretsAddCmd.Flags().String("name", "", "Human-readable name for the secret")
-	secretsAddCmd.Flags().String("provider", "", "Provider (github, npm)")
 	secretsAddCmd.Flags().String("env-var", "", "Environment variable name for VMs")
 	secretsAddCmd.Flags().String("secret", "", "The secret value (prompts if omitted)")
+	secretsAddCmd.Flags().StringArray("host", nil, "Host to scope to (can be specified multiple times)")
 	secretsAddCmd.Flags().String("comment", "", "Optional note")
 
 	// Flags for update command
 	secretsUpdateCmd.Flags().String("secret", "", "New secret value (prompts if omitted)")
 	secretsUpdateCmd.Flags().String("env-var", "", "Updated environment variable name")
+	secretsUpdateCmd.Flags().StringArray("host", nil, "Updated host scoping (can be specified multiple times, replaces existing)")
 	secretsUpdateCmd.Flags().String("comment", "", "Updated comment")
 }
