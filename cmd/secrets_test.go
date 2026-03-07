@@ -18,9 +18,9 @@ func testSecret() api.Secret {
 	return api.Secret{
 		ID:         "sec_m4xk9wp2",
 		Name:       "github-main",
-		Provider:   "github",
 		EnvVar:     "GITHUB_TOKEN",
-		ProxyValue: "IRONCD_PROXY_github_github-main",
+		Hosts:      []string{"*"},
+		ProxyValue: "IRONSH_PROXY_github-main",
 		Comment:    &comment,
 		CreatedAt:  "2026-03-04T12:00:00Z",
 		UpdatedAt:  "2026-03-04T12:00:00Z",
@@ -56,95 +56,24 @@ func TestSecretsAdd_AllFlags(t *testing.T) {
 
 	rootCmd.SetArgs([]string{"secrets", "add",
 		"--name", "github-main",
-		"--provider", "github",
 		"--env-var", "GITHUB_TOKEN",
 		"--secret", "ghp_abc123",
 	})
 	err := rootCmd.Execute()
 	require.NoError(t, err)
 	require.Equal(t, "github-main", gotBody.Name)
-	require.Equal(t, "github", gotBody.Provider)
 	require.Equal(t, "ghp_abc123", gotBody.Secret)
 	require.Equal(t, "GITHUB_TOKEN", gotBody.EnvVar)
 }
 
-func TestSecretsAdd_MissingName(t *testing.T) {
-	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
-	defer server.Close()
-	setupViper(server.URL)
-
-	rootCmd.SetArgs([]string{"secrets", "add",
-		"--name", "",
-		"--provider", "github",
-		"--env-var", "TOKEN",
-		"--secret", "x",
-	})
-	err := rootCmd.Execute()
-	require.ErrorContains(t, err, "--name is required")
-}
-
-func TestSecretsAdd_MissingProvider(t *testing.T) {
-	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
-	defer server.Close()
-	setupViper(server.URL)
-
-	rootCmd.SetArgs([]string{"secrets", "add",
-		"--name", "test",
-		"--provider", "",
-		"--env-var", "TOKEN",
-		"--secret", "x",
-	})
-	err := rootCmd.Execute()
-	require.ErrorContains(t, err, "--provider is required")
-}
-
-func TestSecretsAdd_MissingEnvVar(t *testing.T) {
-	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
-	defer server.Close()
-	setupViper(server.URL)
-
-	rootCmd.SetArgs([]string{"secrets", "add",
-		"--name", "test",
-		"--provider", "github",
-		"--env-var", "",
-		"--secret", "x",
-	})
-	err := rootCmd.Execute()
-	require.ErrorContains(t, err, "--env-var is required")
-}
-
-func TestSecretsAdd_UnsupportedProvider(t *testing.T) {
-	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusNotFound)
-	})
-	defer server.Close()
-	setupViper(server.URL)
-
-	rootCmd.SetArgs([]string{"secrets", "add",
-		"--name", "test",
-		"--provider", "bitbucket",
-		"--env-var", "TOKEN",
-		"--secret", "x",
-	})
-	err := rootCmd.Execute()
-	require.ErrorContains(t, err, "unsupported provider")
-}
-
-func TestSecretsAdd_WithComment(t *testing.T) {
+func TestSecretsAdd_WithHosts(t *testing.T) {
 	var gotBody api.CreateSecretRequest
 	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == "POST" && r.URL.Path == "/secrets" {
 			body, _ := io.ReadAll(r.Body)
 			json.Unmarshal(body, &gotBody)
 			s := testSecret()
-			comment := "main token"
-			s.Comment = &comment
+			s.Hosts = []string{"api.github.com", "*.github.com"}
 			w.WriteHeader(http.StatusCreated)
 			json.NewEncoder(w).Encode(map[string]interface{}{"data": s})
 			return
@@ -156,14 +85,99 @@ func TestSecretsAdd_WithComment(t *testing.T) {
 
 	rootCmd.SetArgs([]string{"secrets", "add",
 		"--name", "github-main",
-		"--provider", "github",
 		"--env-var", "GITHUB_TOKEN",
 		"--secret", "ghp_abc123",
-		"--comment", "main token",
+		"--host", "api.github.com",
+		"--host", "*.github.com",
 	})
 	err := rootCmd.Execute()
 	require.NoError(t, err)
-	require.Equal(t, "main token", gotBody.Comment)
+	require.Equal(t, []string{"api.github.com", "*.github.com"}, gotBody.Hosts)
+}
+
+func TestSecretsAdd_WithoutHost_DefaultsToWildcard(t *testing.T) {
+	// When --host is not specified, the server defaults to ["*"].
+	// This test verifies the response shows the default hosts.
+	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/secrets" {
+			s := testSecret() // has Hosts: ["*"]
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{"data": s})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+	setupViper(server.URL)
+
+	rootCmd.SetArgs([]string{"secrets", "add",
+		"--name", "github-main",
+		"--env-var", "GITHUB_TOKEN",
+		"--secret", "ghp_abc123",
+	})
+	err := rootCmd.Execute()
+	require.NoError(t, err)
+}
+
+func TestSecretsAdd_MissingName(t *testing.T) {
+	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+	setupViper(server.URL)
+
+	rootCmd.SetArgs([]string{"secrets", "add",
+		"--name", "",
+		"--env-var", "TOKEN",
+		"--secret", "x",
+	})
+	err := rootCmd.Execute()
+	require.ErrorContains(t, err, "--name is required")
+}
+
+func TestSecretsAdd_MissingEnvVar(t *testing.T) {
+	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+	setupViper(server.URL)
+
+	rootCmd.SetArgs([]string{"secrets", "add",
+		"--name", "test",
+		"--env-var", "",
+		"--secret", "x",
+	})
+	err := rootCmd.Execute()
+	require.ErrorContains(t, err, "--env-var is required")
+}
+
+func TestSecretsAdd_WithComment(t *testing.T) {
+	var gotBody api.CreateSecretRequest
+	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "POST" && r.URL.Path == "/secrets" {
+			body, _ := io.ReadAll(r.Body)
+			json.Unmarshal(body, &gotBody)
+			s := testSecret()
+			comment := "CI publish token"
+			s.Comment = &comment
+			w.WriteHeader(http.StatusCreated)
+			json.NewEncoder(w).Encode(map[string]interface{}{"data": s})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+	setupViper(server.URL)
+
+	rootCmd.SetArgs([]string{"secrets", "add",
+		"--name", "npm-publish",
+		"--env-var", "NPM_TOKEN",
+		"--secret", "npm_abc123",
+		"--comment", "CI publish token",
+	})
+	err := rootCmd.Execute()
+	require.NoError(t, err)
+	require.Equal(t, "CI publish token", gotBody.Comment)
 }
 
 func TestSecretsList(t *testing.T) {
@@ -245,6 +259,36 @@ func TestSecretsUpdate_WithSecret(t *testing.T) {
 	err := rootCmd.Execute()
 	require.NoError(t, err)
 	require.Equal(t, "ghp_newtoken789", gotBody.Secret)
+}
+
+func TestSecretsUpdate_WithHosts(t *testing.T) {
+	s := testSecret()
+	s.Hosts = []string{"api.github.com", "*.github.com"}
+	var gotBody map[string]interface{}
+	server, _ := setupSecretsServer(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == "GET" && r.URL.Path == "/secrets" {
+			resp := api.ListSecretsResponse{Data: []api.Secret{s}}
+			json.NewEncoder(w).Encode(resp)
+			return
+		}
+		if r.Method == "PATCH" && r.URL.Path == "/secrets/sec_m4xk9wp2" {
+			body, _ := io.ReadAll(r.Body)
+			json.Unmarshal(body, &gotBody)
+			json.NewEncoder(w).Encode(map[string]interface{}{"data": s})
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	})
+	defer server.Close()
+	setupViper(server.URL)
+
+	rootCmd.SetArgs([]string{"secrets", "update", "github-main",
+		"--host", "api.github.com",
+		"--host", "*.github.com",
+	})
+	err := rootCmd.Execute()
+	require.NoError(t, err)
+	require.Equal(t, []interface{}{"api.github.com", "*.github.com"}, gotBody["hosts"])
 }
 
 func TestSecretsUpdate_EnvVar(t *testing.T) {
@@ -362,16 +406,16 @@ func TestSecretsAPI_Create(t *testing.T) {
 	defer server.Close()
 
 	req := api.CreateSecretRequest{
-		Name:     "github-main",
-		Provider: "github",
-		Secret:   "ghp_abc123",
-		EnvVar:   "GITHUB_TOKEN",
+		Name:   "github-main",
+		Secret: "ghp_abc123",
+		EnvVar: "GITHUB_TOKEN",
 	}
 
 	s, err := client.SecretsCreate(req)
 	require.NoError(t, err)
 	require.Equal(t, "sec_m4xk9wp2", s.ID)
-	require.Equal(t, "IRONCD_PROXY_github_github-main", s.ProxyValue)
+	require.Equal(t, "IRONSH_PROXY_github-main", s.ProxyValue)
+	require.Equal(t, []string{"*"}, s.Hosts)
 }
 
 func TestSecretsAPI_ResolveByName(t *testing.T) {
@@ -436,6 +480,7 @@ func TestSecretsAPI_List(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Data, 1)
 	require.Equal(t, "github-main", resp.Data[0].Name)
+	require.Equal(t, []string{"*"}, resp.Data[0].Hosts)
 }
 
 func TestSecretsAPI_Update(t *testing.T) {

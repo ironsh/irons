@@ -144,30 +144,31 @@ type AuditEgressParams struct {
 
 // Secret represents a secret resource returned by the API.
 type Secret struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Provider   string  `json:"provider"`
-	EnvVar     string  `json:"env_var"`
-	ProxyValue string  `json:"proxy_value"`
-	Comment    *string `json:"comment,omitempty"`
-	CreatedAt  string  `json:"created_at"`
-	UpdatedAt  string  `json:"updated_at"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	EnvVar     string   `json:"env_var"`
+	Hosts      []string `json:"hosts"`
+	ProxyValue string   `json:"proxy_value"`
+	Comment    *string  `json:"comment,omitempty"`
+	CreatedAt  string   `json:"created_at"`
+	UpdatedAt  string   `json:"updated_at"`
 }
 
 // CreateSecretRequest represents the request payload for creating a secret.
 type CreateSecretRequest struct {
-	Name     string `json:"name"`
-	Provider string `json:"provider"`
-	Secret   string `json:"secret"`
-	EnvVar   string `json:"env_var"`
-	Comment  string `json:"comment,omitempty"`
+	Name    string   `json:"name"`
+	Secret  string   `json:"secret"`
+	EnvVar  string   `json:"env_var"`
+	Hosts   []string `json:"hosts,omitempty"`
+	Comment string   `json:"comment,omitempty"`
 }
 
 // UpdateSecretRequest represents the request payload for updating a secret.
 type UpdateSecretRequest struct {
-	Secret  string `json:"secret,omitempty"`
-	EnvVar  string `json:"env_var,omitempty"`
-	Comment string `json:"comment,omitempty"`
+	Secret  string   `json:"secret,omitempty"`
+	EnvVar  string   `json:"env_var,omitempty"`
+	Hosts   []string `json:"hosts,omitempty"`
+	Comment string   `json:"comment,omitempty"`
 }
 
 // ListSecretsResponse represents the paginated response from listing secrets.
