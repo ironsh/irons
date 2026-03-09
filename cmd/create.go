@@ -39,6 +39,7 @@ Examples:
 		keyPath, _ := cmd.Flags().GetString("key")
 		name := args[0]
 		async, _ := cmd.Flags().GetBool("async")
+		snapshotID, _ := cmd.Flags().GetString("snapshot")
 
 		// Read SSH key file
 		keyContent, err := os.ReadFile(keyPath)
@@ -53,7 +54,7 @@ Examples:
 		fmt.Printf("Creating VM '%s'...\n", name)
 
 		// Make API call
-		resp, err := client.Create(keyContent, name)
+		resp, err := client.Create(keyContent, name, snapshotID)
 		if err != nil {
 			return fmt.Errorf("creating VM: %w", err)
 		}
@@ -113,6 +114,7 @@ func init() {
 	// Define flags
 	createCmd.Flags().StringP("key", "k", defaultKeyPath, "SSH public key path")
 	createCmd.Flags().Bool("async", false, "Return immediately without waiting for the VM to reach the running state")
+	createCmd.Flags().String("snapshot", "", "Restore from a snapshot ID")
 }
 
 // fileExists returns true if the file at path exists and is accessible.
