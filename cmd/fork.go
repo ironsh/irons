@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
@@ -77,26 +76,5 @@ func init() {
 	forkCmd.Flags().String("fork-name", "", "Name for the forked VM (required)")
 	forkCmd.MarkFlagRequired("fork-name")
 
-	// SSH key flag with same auto-detection as create.
-	defaultKeyPath := ""
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		candidates := []string{
-			filepath.Join(homeDir, ".ssh", "id_ed25519.pub"),
-			filepath.Join(homeDir, ".ssh", "id_ed25519_sk.pub"),
-			filepath.Join(homeDir, ".ssh", "id_ecdsa.pub"),
-			filepath.Join(homeDir, ".ssh", "id_ecdsa_sk.pub"),
-			filepath.Join(homeDir, ".ssh", "id_rsa.pub"),
-		}
-		for _, c := range candidates {
-			if fileExists(c) {
-				defaultKeyPath = c
-				break
-			}
-		}
-		if defaultKeyPath == "" {
-			defaultKeyPath = filepath.Join(homeDir, ".ssh", "id_ed25519.pub")
-		}
-	}
-
-	forkCmd.Flags().StringP("key", "k", defaultKeyPath, "SSH public key path")
+	forkCmd.Flags().StringP("key", "k", defaultSSHKeyPath(), "SSH public key path")
 }
