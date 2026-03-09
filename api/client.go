@@ -181,12 +181,12 @@ type ListSecretsResponse struct {
 
 // Snapshot represents a snapshot resource returned by the API.
 type Snapshot struct {
-	ID          string `json:"id"`
-	VMID        string `json:"vm_id"`
-	Label       string `json:"label,omitempty"`
-	Status      string `json:"status"`
-	BaseImageID string `json:"base_image_id,omitempty"`
-	CreatedAt   string `json:"created_at"`
+	ID                     string `json:"id"`
+	SourceVirtualMachineID string `json:"source_virtual_machine_id"`
+	Label                  string `json:"label,omitempty"`
+	Status                 string `json:"status"`
+	BaseImageID            string `json:"base_image_id,omitempty"`
+	CreatedAt              string `json:"created_at"`
 }
 
 // CreateSnapshotRequest represents the request payload for creating a snapshot.

@@ -271,7 +271,7 @@ func TestSnapshotsAPI_Create(t *testing.T) {
 	got, err := client.SnapshotsCreate("vm_k3mf9xvw2p", api.CreateSnapshotRequest{Label: "pre-refactor"})
 	require.NoError(t, err)
 	require.Equal(t, "snap_x9f2km4p", got.ID)
-	require.Equal(t, "vm_k3mf9xvw2p", got.VMID)
+	require.Equal(t, "vm_k3mf9xvw2p", got.SourceVirtualMachineID)
 	require.Equal(t, "pending", got.Status)
 	require.Equal(t, "pre-refactor", got.Label)
 }

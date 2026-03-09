@@ -78,7 +78,7 @@ Examples:
 			if snapLabel == "" {
 				snapLabel = "(unlabeled)"
 			}
-			fmt.Printf("%s  %s  %s  %s\n", snap.ID, snapLabel, snap.Status, snap.VMID)
+			fmt.Printf("%s  %s  %s  %s\n", snap.ID, snapLabel, snap.Status, snap.SourceVirtualMachineID)
 			fmt.Printf("Snapshot started. Run 'irons snapshots get %s' to check status.\n", snap.ID)
 			return nil
 		}
@@ -153,7 +153,7 @@ Examples:
 		if showVM {
 			table.Header([]string{"ID", "Label", "Status", "VM", "Created"})
 			for _, s := range resp.Data {
-				table.Append([]string{s.ID, snapshotDisplayLabel(s.Label), s.Status, s.VMID, formatRelativeTime(s.CreatedAt)})
+				table.Append([]string{s.ID, snapshotDisplayLabel(s.Label), s.Status, s.SourceVirtualMachineID, formatRelativeTime(s.CreatedAt)})
 			}
 		} else {
 			table.Header([]string{"ID", "Label", "Status", "Created"})
@@ -194,7 +194,7 @@ Examples:
 
 		fmt.Printf("  ID:         %s\n", snap.ID)
 		fmt.Printf("  Label:      %s\n", snapshotDisplayLabel(snap.Label))
-		fmt.Printf("  VM:         %s\n", snap.VMID)
+		fmt.Printf("  VM:         %s\n", snap.SourceVirtualMachineID)
 		fmt.Printf("  Status:     %s\n", snap.Status)
 		if snap.BaseImageID != "" {
 			fmt.Printf("  Base image: %s\n", snap.BaseImageID)
