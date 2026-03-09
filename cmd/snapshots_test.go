@@ -13,7 +13,7 @@ func sampleSnapshot() map[string]interface{} {
 	return map[string]interface{}{
 		"id":            "snap_x9f2km4p",
 		"vm_id":         "vm_k3mf9xvw2p",
-		"name":          "pre-refactor",
+		"label":         "pre-refactor",
 		"status":        "pending",
 		"base_image_id": "base_2026-02-28",
 		"created_at":    "2026-03-01T14:00:00Z",
@@ -92,16 +92,16 @@ func TestSnapshotsCreate_Basic(t *testing.T) {
 		snapshotCreateRoute("vm_k3mf9xvw2p", snap),
 	})
 
-	res := runCLI(t, ms, "snapshots", "create", "vm_k3mf9xvw2p", "--name", "pre-refactor")
+	res := runCLI(t, ms, "snapshots", "create", "vm_k3mf9xvw2p", "--label", "pre-refactor")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
 	require.Contains(t, res.Stdout, "snap_x9f2km4p")
 	require.Contains(t, res.Stdout, "pending")
 	require.Contains(t, res.Stdout, "irons snapshots get snap_x9f2km4p")
 }
 
-func TestSnapshotsCreate_NoName(t *testing.T) {
+func TestSnapshotsCreate_NoLabel(t *testing.T) {
 	snap := sampleSnapshot()
-	snap["name"] = ""
+	snap["label"] = ""
 	ms := newMockServer(t, []route{
 		snapshotCreateRoute("vm_k3mf9xvw2p", snap),
 	})
@@ -109,7 +109,7 @@ func TestSnapshotsCreate_NoName(t *testing.T) {
 	res := runCLI(t, ms, "snapshots", "create", "vm_k3mf9xvw2p")
 	require.Equal(t, 0, res.ExitCode, res.Stderr)
 	require.Contains(t, res.Stdout, "snap_x9f2km4p")
-	require.Contains(t, res.Stdout, "(unnamed)")
+	require.Contains(t, res.Stdout, "(unlabeled)")
 }
 
 func TestSnapshotsCreate_ResolvesVMName(t *testing.T) {
@@ -158,11 +158,11 @@ func TestSnapshotsCreate_RequestBody(t *testing.T) {
 		snapshotCreateRoute("vm_k3mf9xvw2p", snap),
 	})
 
-	runCLI(t, ms, "snapshots", "create", "vm_k3mf9xvw2p", "--name", "pre-refactor")
+	runCLI(t, ms, "snapshots", "create", "vm_k3mf9xvw2p", "--label", "pre-refactor")
 
 	bodies := ms.RequestBodies("POST", "/vms/vm_k3mf9xvw2p/snapshots")
 	require.Len(t, bodies, 1)
-	require.Equal(t, "pre-refactor", bodies[0]["name"])
+	require.Equal(t, "pre-refactor", bodies[0]["label"])
 }
 
 func TestSnapshotsList_All(t *testing.T) {
@@ -268,12 +268,12 @@ func TestSnapshotsAPI_Create(t *testing.T) {
 	ms := newMockServer(t, []route{snapshotCreateRoute("vm_k3mf9xvw2p", snap)})
 
 	client := api.NewClient(ms.Server.URL, "test-key")
-	got, err := client.SnapshotsCreate("vm_k3mf9xvw2p", api.CreateSnapshotRequest{Name: "pre-refactor"})
+	got, err := client.SnapshotsCreate("vm_k3mf9xvw2p", api.CreateSnapshotRequest{Label: "pre-refactor"})
 	require.NoError(t, err)
 	require.Equal(t, "snap_x9f2km4p", got.ID)
 	require.Equal(t, "vm_k3mf9xvw2p", got.VMID)
 	require.Equal(t, "pending", got.Status)
-	require.Equal(t, "pre-refactor", got.Name)
+	require.Equal(t, "pre-refactor", got.Label)
 }
 
 func TestSnapshotsAPI_Get(t *testing.T) {
@@ -319,7 +319,7 @@ func TestSnapshotsAPI_Delete(t *testing.T) {
 
 // --- Unit tests ---
 
-func TestSnapshotDisplayName(t *testing.T) {
-	require.Equal(t, "pre-refactor", snapshotDisplayName("pre-refactor"))
-	require.Equal(t, "(unnamed)", snapshotDisplayName(""))
+func TestSnapshotDisplayLabel(t *testing.T) {
+	require.Equal(t, "pre-refactor", snapshotDisplayLabel("pre-refactor"))
+	require.Equal(t, "(unlabeled)", snapshotDisplayLabel(""))
 }

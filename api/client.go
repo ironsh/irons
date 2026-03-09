@@ -183,7 +183,7 @@ type ListSecretsResponse struct {
 type Snapshot struct {
 	ID          string `json:"id"`
 	VMID        string `json:"vm_id"`
-	Name        string `json:"name,omitempty"`
+	Label       string `json:"label,omitempty"`
 	Status      string `json:"status"`
 	BaseImageID string `json:"base_image_id,omitempty"`
 	CreatedAt   string `json:"created_at"`
@@ -191,7 +191,7 @@ type Snapshot struct {
 
 // CreateSnapshotRequest represents the request payload for creating a snapshot.
 type CreateSnapshotRequest struct {
-	Name string `json:"name,omitempty"`
+	Label string `json:"label,omitempty"`
 }
 
 // ListSnapshotsResponse represents the paginated response from listing snapshots.

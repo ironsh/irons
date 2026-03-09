@@ -46,13 +46,13 @@ request. Use --wait to poll until the snapshot reaches "ready" or "failed".
 
 Examples:
   irons snapshots create my-dev-env
-  irons snapshots create my-dev-env --name pre-refactor
+  irons snapshots create my-dev-env --label pre-refactor
   irons snapshots create vm_k3mf9xvw2p --wait
   irons snapshots create my-dev-env --json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		idOrName := args[0]
-		name, _ := cmd.Flags().GetString("name")
+		label, _ := cmd.Flags().GetString("label")
 		wait, _ := cmd.Flags().GetBool("wait")
 		jsonOut, _ := cmd.Flags().GetBool("json")
 
@@ -63,7 +63,7 @@ Examples:
 			return err
 		}
 
-		req := api.CreateSnapshotRequest{Name: name}
+		req := api.CreateSnapshotRequest{Label: label}
 		snap, err := client.SnapshotsCreate(vmID, req)
 		if err != nil {
 			return fmt.Errorf("creating snapshot: %w", err)
@@ -74,11 +74,11 @@ Examples:
 		}
 
 		if !wait {
-			snapName := snap.Name
-			if snapName == "" {
-				snapName = "(unnamed)"
+			snapLabel := snap.Label
+			if snapLabel == "" {
+				snapLabel = "(unlabeled)"
 			}
-			fmt.Printf("%s  %s  %s  %s\n", snap.ID, snapName, snap.Status, snap.VMID)
+			fmt.Printf("%s  %s  %s  %s\n", snap.ID, snapLabel, snap.Status, snap.VMID)
 			fmt.Printf("Snapshot started. Run 'irons snapshots get %s' to check status.\n", snap.ID)
 			return nil
 		}
@@ -94,11 +94,11 @@ Examples:
 			return fmt.Errorf("getting snapshot: %w", err)
 		}
 
-		snapName := snap.Name
-		if snapName != "" {
-			snapName = " (" + snapName + ")"
+		snapLabel := snap.Label
+		if snapLabel != "" {
+			snapLabel = " (" + snapLabel + ")"
 		}
-		fmt.Printf("✓ Snapshot ready: %s%s\n", snap.ID, snapName)
+		fmt.Printf("✓ Snapshot ready: %s%s\n", snap.ID, snapLabel)
 		return nil
 	},
 }
@@ -151,14 +151,14 @@ Examples:
 
 		table := tablewriter.NewTable(os.Stdout)
 		if showVM {
-			table.Header([]string{"ID", "Name", "Status", "VM", "Created"})
+			table.Header([]string{"ID", "Label", "Status", "VM", "Created"})
 			for _, s := range resp.Data {
-				table.Append([]string{s.ID, snapshotDisplayName(s.Name), s.Status, s.VMID, formatRelativeTime(s.CreatedAt)})
+				table.Append([]string{s.ID, snapshotDisplayLabel(s.Label), s.Status, s.VMID, formatRelativeTime(s.CreatedAt)})
 			}
 		} else {
-			table.Header([]string{"ID", "Name", "Status", "Created"})
+			table.Header([]string{"ID", "Label", "Status", "Created"})
 			for _, s := range resp.Data {
-				table.Append([]string{s.ID, snapshotDisplayName(s.Name), s.Status, formatRelativeTime(s.CreatedAt)})
+				table.Append([]string{s.ID, snapshotDisplayLabel(s.Label), s.Status, formatRelativeTime(s.CreatedAt)})
 			}
 		}
 		table.Render()
@@ -193,7 +193,7 @@ Examples:
 		}
 
 		fmt.Printf("  ID:         %s\n", snap.ID)
-		fmt.Printf("  Name:       %s\n", snapshotDisplayName(snap.Name))
+		fmt.Printf("  Label:      %s\n", snapshotDisplayLabel(snap.Label))
 		fmt.Printf("  VM:         %s\n", snap.VMID)
 		fmt.Printf("  Status:     %s\n", snap.Status)
 		if snap.BaseImageID != "" {
@@ -230,7 +230,7 @@ Examples:
 				return fmt.Errorf("getting snapshot: %w", err)
 			}
 
-			label := snapshotDisplayName(snap.Name)
+			label := snapshotDisplayLabel(snap.Label)
 			fmt.Printf("Delete snapshot %s (%s)? This cannot be undone. [y/N] ", id, label)
 
 			if !confirmPrompt() {
@@ -306,12 +306,12 @@ func printJSON(v interface{}) error {
 	return enc.Encode(v)
 }
 
-// snapshotDisplayName returns the snapshot's name, or "(unnamed)" if empty.
-func snapshotDisplayName(name string) string {
-	if name == "" {
-		return "(unnamed)"
+// snapshotDisplayLabel returns the snapshot's label, or "(unlabeled)" if empty.
+func snapshotDisplayLabel(label string) string {
+	if label == "" {
+		return "(unlabeled)"
 	}
-	return name
+	return label
 }
 
 // formatRelativeTime formats an RFC3339 timestamp as a relative duration
@@ -347,7 +347,7 @@ func init() {
 	snapshotsCmd.AddCommand(snapshotsDeleteCmd)
 
 	// create flags
-	snapshotsCreateCmd.Flags().String("name", "", "Optional label for the snapshot")
+	snapshotsCreateCmd.Flags().String("label", "", "Optional label for the snapshot")
 	snapshotsCreateCmd.Flags().Bool("wait", false, "Wait for the snapshot to be ready")
 	snapshotsCreateCmd.Flags().Bool("json", false, "Output raw JSON")
 
