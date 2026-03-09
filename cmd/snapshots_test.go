@@ -11,12 +11,12 @@ import (
 
 func sampleSnapshot() map[string]interface{} {
 	return map[string]interface{}{
-		"id":            "snap_x9f2km4p",
-		"vm_id":         "vm_k3mf9xvw2p",
-		"label":         "pre-refactor",
-		"status":        "pending",
-		"base_image_id": "base_2026-02-28",
-		"created_at":    "2026-03-01T14:00:00Z",
+		"id":                         "snap_x9f2km4p",
+		"source_virtual_machine_id":  "vm_k3mf9xvw2p",
+		"label":                      "pre-refactor",
+		"status":                     "pending",
+		"base_image_id":              "base_2026-02-28",
+		"created_at":                 "2026-03-01T14:00:00Z",
 	}
 }
 
