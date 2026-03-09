@@ -252,7 +252,20 @@ Examples:
 func waitForSnapshot(ctx context.Context, client *api.Client, id string) error {
 	deadline := time.Now().Add(pollTimeout)
 
-	fmt.Printf("⠋ Uploading snapshot...")
+	lastStatus := ""
+	printStatus := func(status string) {
+		if status != lastStatus {
+			if lastStatus != "" {
+				fmt.Println()
+			}
+			fmt.Printf("⠋ Snapshot %s...", status)
+			lastStatus = status
+		} else {
+			fmt.Print(".")
+		}
+	}
+
+	printStatus("pending")
 
 	ticker := time.NewTicker(snapshotPollInterval)
 	defer ticker.Stop()
@@ -273,7 +286,7 @@ func waitForSnapshot(ctx context.Context, client *api.Client, id string) error {
 			fmt.Println()
 			return fmt.Errorf("✗ Snapshot failed. The machine was not affected")
 		} else {
-			fmt.Print(".")
+			printStatus(snap.Status)
 		}
 
 		select {
