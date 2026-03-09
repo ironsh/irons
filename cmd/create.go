@@ -39,6 +39,7 @@ Examples:
 		keyPath, _ := cmd.Flags().GetString("key")
 		name := args[0]
 		async, _ := cmd.Flags().GetBool("async")
+		snapshotID, _ := cmd.Flags().GetString("snapshot")
 
 		// Read SSH key file
 		keyContent, err := os.ReadFile(keyPath)
@@ -53,7 +54,7 @@ Examples:
 		fmt.Printf("Creating VM '%s'...\n", name)
 
 		// Make API call
-		resp, err := client.Create(keyContent, name)
+		resp, err := client.Create(keyContent, name, snapshotID)
 		if err != nil {
 			return fmt.Errorf("creating VM: %w", err)
 		}
@@ -83,36 +84,33 @@ Examples:
 func init() {
 	rootCmd.AddCommand(createCmd)
 
-	// Get default SSH key path with error handling
-	// Prefer ed25519, fall back to RSA, then empty string
-	defaultKeyPath := "" // fallback default
-	if homeDir, err := os.UserHomeDir(); err == nil {
-		rsaKey := filepath.Join(homeDir, ".ssh", "id_rsa.pub")
-		ed25519Key := filepath.Join(homeDir, ".ssh", "id_ed25519.pub")
+	createCmd.Flags().StringP("key", "k", defaultSSHKeyPath(), "SSH public key path")
+	createCmd.Flags().Bool("async", false, "Return immediately without waiting for the VM to reach the running state")
+	createCmd.Flags().String("snapshot", "", "Restore from a snapshot ID")
+}
 
-		ecdsaKey := filepath.Join(homeDir, ".ssh", "id_ecdsa.pub")
-		ecdsaSkKey := filepath.Join(homeDir, ".ssh", "id_ecdsa_sk.pub")
-		ed25519SkKey := filepath.Join(homeDir, ".ssh", "id_ed25519_sk.pub")
-
-		switch {
-		case fileExists(ed25519Key):
-			defaultKeyPath = ed25519Key
-		case fileExists(ed25519SkKey):
-			defaultKeyPath = ed25519SkKey
-		case fileExists(ecdsaKey):
-			defaultKeyPath = ecdsaKey
-		case fileExists(ecdsaSkKey):
-			defaultKeyPath = ecdsaSkKey
-		case fileExists(rsaKey):
-			defaultKeyPath = rsaKey
-		default:
-			defaultKeyPath = ed25519Key // sensible default path even if absent
-		}
+// defaultSSHKeyPath returns the path to the first SSH public key found in
+// ~/.ssh, checking in order: ed25519, ed25519_sk, ecdsa, ecdsa_sk, rsa.
+// Falls back to ~/.ssh/id_ed25519.pub if none are found.
+func defaultSSHKeyPath() string {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return ""
 	}
 
-	// Define flags
-	createCmd.Flags().StringP("key", "k", defaultKeyPath, "SSH public key path")
-	createCmd.Flags().Bool("async", false, "Return immediately without waiting for the VM to reach the running state")
+	candidates := []string{
+		filepath.Join(homeDir, ".ssh", "id_ed25519.pub"),
+		filepath.Join(homeDir, ".ssh", "id_ed25519_sk.pub"),
+		filepath.Join(homeDir, ".ssh", "id_ecdsa.pub"),
+		filepath.Join(homeDir, ".ssh", "id_ecdsa_sk.pub"),
+		filepath.Join(homeDir, ".ssh", "id_rsa.pub"),
+	}
+	for _, c := range candidates {
+		if fileExists(c) {
+			return c
+		}
+	}
+	return candidates[0] // sensible default path even if absent
 }
 
 // fileExists returns true if the file at path exists and is accessible.

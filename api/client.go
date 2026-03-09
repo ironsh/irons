@@ -48,8 +48,9 @@ func NewClientDebug(baseURL, apiKey string, debug, insecureTLS bool) *Client {
 
 // CreateRequest represents the request payload for creating a VM
 type CreateRequest struct {
-	PublicKey string `json:"public_key"`
-	Name      string `json:"name"`
+	PublicKey  string `json:"public_key"`
+	Name       string `json:"name"`
+	SnapshotID string `json:"snapshot_id,omitempty"`
 }
 
 // VM represents a VM resource returned by the API
@@ -178,6 +179,28 @@ type ListSecretsResponse struct {
 	Cursor  *string  `json:"cursor,omitempty"`
 }
 
+// Snapshot represents a snapshot resource returned by the API.
+type Snapshot struct {
+	ID                     string `json:"id"`
+	SourceVirtualMachineID string `json:"source_virtual_machine_id"`
+	Label                  string `json:"label,omitempty"`
+	Status                 string `json:"status"`
+	BaseImageID            string `json:"base_image_id,omitempty"`
+	CreatedAt              string `json:"created_at"`
+}
+
+// CreateSnapshotRequest represents the request payload for creating a snapshot.
+type CreateSnapshotRequest struct {
+	Label string `json:"label,omitempty"`
+}
+
+// ListSnapshotsResponse represents the paginated response from listing snapshots.
+type ListSnapshotsResponse struct {
+	Data    []Snapshot `json:"data"`
+	HasMore bool       `json:"has_more"`
+	Cursor  *string    `json:"cursor,omitempty"`
+}
+
 // DeviceCodeResponse represents the response from POST /auth/device/code
 type DeviceCodeResponse struct {
 	Code            string    `json:"code"`
@@ -215,11 +238,13 @@ func unwrapData[T any](body []byte) (T, error) {
 	return w.Data, nil
 }
 
-// Create creates a new VM
-func (c *Client) Create(key []byte, name string) (*VM, error) {
+// Create creates a new VM. If snapshotID is non-empty, the VM is restored from
+// that snapshot.
+func (c *Client) Create(key []byte, name, snapshotID string) (*VM, error) {
 	req := CreateRequest{
-		PublicKey: string(key),
-		Name:      name,
+		PublicKey:  string(key),
+		Name:       name,
+		SnapshotID: snapshotID,
 	}
 
 	reqBody, err := json.Marshal(req)
@@ -686,6 +711,85 @@ func (c *Client) ResolveSecret(idOrName string) (string, error) {
 	}
 
 	return resp.Data[0].ID, nil
+}
+
+// SnapshotsCreate creates a new snapshot for the given VM.
+func (c *Client) SnapshotsCreate(vmID string, req CreateSnapshotRequest) (*Snapshot, error) {
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	path := fmt.Sprintf("/vms/%s/snapshots", vmID)
+	body, err := c.makeRequest("POST", path, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create snapshot: %w", err)
+	}
+
+	snap, err := unwrapData[Snapshot](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &snap, nil
+}
+
+// SnapshotsList lists all snapshots across VMs.
+func (c *Client) SnapshotsList() (*ListSnapshotsResponse, error) {
+	body, err := c.makeRequest("GET", "/snapshots", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list snapshots: %w", err)
+	}
+
+	var listResp ListSnapshotsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// SnapshotsListByVM lists snapshots for a specific VM.
+func (c *Client) SnapshotsListByVM(vmID string) (*ListSnapshotsResponse, error) {
+	path := fmt.Sprintf("/vms/%s/snapshots", vmID)
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list snapshots: %w", err)
+	}
+
+	var listResp ListSnapshotsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// SnapshotsGet retrieves a snapshot by ID.
+func (c *Client) SnapshotsGet(id string) (*Snapshot, error) {
+	path := fmt.Sprintf("/snapshots/%s", id)
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get snapshot: %w", err)
+	}
+
+	snap, err := unwrapData[Snapshot](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &snap, nil
+}
+
+// SnapshotsDelete deletes a snapshot by ID.
+func (c *Client) SnapshotsDelete(id string) error {
+	path := fmt.Sprintf("/snapshots/%s", id)
+	_, err := c.makeRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete snapshot: %w", err)
+	}
+
+	return nil
 }
 
 // makeRequest makes an HTTP request with common headers and error handling
