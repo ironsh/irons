@@ -16,8 +16,8 @@ var forkCmd = &cobra.Command{
 	Long: `Fork a VM by creating a snapshot and then spinning up a new VM from it.
 
 This is a convenience command that combines "snapshots create --wait" and
-"create --snapshot" into a single step. The source VM is briefly paused
-while the snapshot is taken, then automatically resumed.
+"create --snapshot" into a single step. The snapshot is taken with zero
+downtime — the source VM is not affected.
 
 Examples:
   irons fork my-dev-env --fork-name my-dev-env-copy

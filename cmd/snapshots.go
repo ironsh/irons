@@ -23,8 +23,7 @@ var snapshotsCmd = &cobra.Command{
 	Short: "Manage snapshots",
 	Long: `Manage VM snapshots.
 
-Snapshots capture a VM's overlay at a point in time. The VM is briefly
-paused while the overlay is copied and then automatically resumed.
+Snapshots capture a VM's overlay at a point in time with zero downtime.
 Restoring a snapshot creates a new VM — the original is untouched.`,
 	Run: func(cmd *cobra.Command, args []string) {
 		cmd.Help()
@@ -37,8 +36,7 @@ var snapshotsCreateCmd = &cobra.Command{
 	Short: "Create a snapshot of a VM",
 	Long: `Create a snapshot of the specified VM.
 
-The server suspends the VM briefly, copies its overlay, and resumes it.
-The snapshot is then uploaded in the background. The VM is not affected
+The snapshot is taken with zero downtime. The VM is not affected
 if the upload fails.
 
 By default the command returns immediately after the API accepts the
