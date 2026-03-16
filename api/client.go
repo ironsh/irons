@@ -713,6 +713,132 @@ func (c *Client) ResolveSecret(idOrName string) (string, error) {
 	return resp.Data[0].ID, nil
 }
 
+// PublicKey represents a public key resource returned by the API.
+type PublicKey struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Fingerprint string `json:"fingerprint"`
+	PublicKey   string `json:"public_key"`
+	CreatedAt   string `json:"created_at"`
+}
+
+// CreatePublicKeyRequest represents the request payload for adding a public key.
+type CreatePublicKeyRequest struct {
+	Name      string `json:"name"`
+	PublicKey string `json:"public_key"`
+}
+
+// ListPublicKeysResponse represents the paginated response from listing public keys.
+type ListPublicKeysResponse struct {
+	Data    []PublicKey `json:"data"`
+	HasMore bool       `json:"has_more"`
+	Cursor  *string    `json:"cursor,omitempty"`
+}
+
+// PublicKeysList lists all public keys.
+func (c *Client) PublicKeysList() (*ListPublicKeysResponse, error) {
+	body, err := c.makeRequest("GET", "/public_keys", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list public keys: %w", err)
+	}
+
+	var listResp ListPublicKeysResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// PublicKeysListByName lists public keys filtered by name.
+func (c *Client) PublicKeysListByName(name string) (*ListPublicKeysResponse, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	path := "/public_keys?" + q.Encode()
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list public keys by name: %w", err)
+	}
+
+	var listResp ListPublicKeysResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// PublicKeysCreate adds a new public key.
+func (c *Client) PublicKeysCreate(req CreatePublicKeyRequest) (*PublicKey, error) {
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	body, err := c.makeRequest("POST", "/public_keys", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create public key: %w", err)
+	}
+
+	key, err := unwrapData[PublicKey](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &key, nil
+}
+
+// PublicKeysGet retrieves a single public key by ID.
+func (c *Client) PublicKeysGet(id string) (*PublicKey, error) {
+	path := fmt.Sprintf("/public_keys/%s", id)
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	key, err := unwrapData[PublicKey](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &key, nil
+}
+
+// PublicKeysDelete deletes a public key by ID.
+func (c *Client) PublicKeysDelete(id string) error {
+	path := fmt.Sprintf("/public_keys/%s", id)
+
+	_, err := c.makeRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete public key: %w", err)
+	}
+
+	return nil
+}
+
+// ResolvePublicKey resolves a public key identifier to a public key ID. If
+// idOrName starts with "pub_" it is returned as-is. Otherwise the value is
+// treated as a name: the list public keys endpoint is queried with that name
+// and the first match is returned.
+func (c *Client) ResolvePublicKey(idOrName string) (string, error) {
+	if strings.HasPrefix(idOrName, "pub_") {
+		return idOrName, nil
+	}
+
+	resp, err := c.PublicKeysListByName(idOrName)
+	if err != nil {
+		return "", fmt.Errorf("resolving public key name %q: %w", idOrName, err)
+	}
+
+	if len(resp.Data) == 0 {
+		return "", fmt.Errorf("no public key found with name %q", idOrName)
+	}
+
+	return resp.Data[0].ID, nil
+}
+
 // SnapshotsCreate creates a new snapshot for the given VM.
 func (c *Client) SnapshotsCreate(vmID string, req CreateSnapshotRequest) (*Snapshot, error) {
 	reqBody, err := json.Marshal(req)
