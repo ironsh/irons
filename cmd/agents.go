@@ -202,7 +202,7 @@ func runAgentsNew(ctx context.Context, opts agentsNewOpts) error {
 	client := newClient()
 
 	// Step 1: Check onboarding credentials.
-	if err := checkOnboardingSecrets(ctx, client); err != nil {
+	if err := checkOnboardingSecrets(client); err != nil {
 		return err
 	}
 
@@ -279,8 +279,8 @@ func deriveNameFromRepo(repo string) string {
 }
 
 // checkOnboardingSecrets verifies the user has the required secrets for agent
-// creation. If any are missing, it runs the onboard flow directly.
-func checkOnboardingSecrets(ctx context.Context, client *api.Client) error {
+// creation. If any are missing, it tells the user to run onboard first.
+func checkOnboardingSecrets(client *api.Client) error {
 	resp, err := client.SecretsList()
 	if err != nil {
 		return fmt.Errorf("checking secrets: %w", err)
@@ -299,12 +299,7 @@ func checkOnboardingSecrets(ctx context.Context, client *api.Client) error {
 		return nil
 	}
 
-	fmt.Println("Missing required credentials. Running setup...")
-	fmt.Println()
-
-	// Run onboard without the post-onboarding agent prompt (we're already
-	// in the process of creating an agent).
-	return runOnboard(ctx, false, false)
+	return fmt.Errorf("missing required credentials. Run `irons onboard` first")
 }
 
 // createAgentWithRetry attempts to create an agent, retrying with a
