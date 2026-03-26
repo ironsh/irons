@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -428,17 +429,16 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 
 	// Collect all available credentials from local sources.
 	var candidates []credResult
-	credPath := claudeCredentialsPath()
 
-	// 1. Claude Code OAuth on disk.
-	if creds, err := readClaudeCredentials(credPath); err == nil && creds.ClaudeAIOAuth != nil {
+	// 1. Claude Code OAuth (keychain on macOS, file on Linux).
+	if creds, source, err := findClaudeOAuthCredentials(); err == nil && creds.ClaudeAIOAuth != nil {
 		oauth := creds.ClaudeAIOAuth
 		if oauth.AccessToken != "" && time.Now().UnixMilli() < oauth.ExpiresAt {
 			oauthJSON, _ := json.Marshal(oauth)
 			candidates = append(candidates, credResult{
 				value:   string(oauthJSON),
 				envVar:  "CLAUDE_CODE_OAUTH_TOKEN",
-				source:  credPath,
+				source:  source,
 				isOAuth: true,
 			})
 		}
@@ -493,7 +493,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 		case choice >= 0:
 			found = &candidates[choice]
 		case choice == choiceClaudeLogin:
-			result, err := runClaudeLogin(credPath)
+			result, err := runClaudeLogin()
 			if err != nil {
 				return err
 			}
@@ -513,7 +513,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 		})
 
 		if choice == 2 {
-			result, err := runClaudeLogin(credPath)
+			result, err := runClaudeLogin()
 			if err != nil {
 				return err
 			}
@@ -550,6 +550,49 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 	return nil
 }
 
+// findClaudeOAuthCredentials reads Claude Code OAuth credentials from the
+// platform-appropriate store. On macOS it queries the Keychain; on Linux it
+// reads ~/.claude/.credentials.json (or $CLAUDE_CONFIG_DIR/.credentials.json).
+// Returns the parsed credentials and a human-readable source string.
+func findClaudeOAuthCredentials() (*claudeCredentials, string, error) {
+	if runtime.GOOS == "darwin" {
+		return readClaudeCredentialsFromKeychain()
+	}
+	return readClaudeCredentialsFromDisk()
+}
+
+func readClaudeCredentialsFromKeychain() (*claudeCredentials, string, error) {
+	out, err := exec.Command("security", "find-generic-password",
+		"-s", "claude-credentials",
+		"-w",
+	).Output()
+	if err != nil {
+		return nil, "", fmt.Errorf("reading keychain: %w", err)
+	}
+
+	var creds claudeCredentials
+	if err := json.Unmarshal(out, &creds); err != nil {
+		return nil, "", fmt.Errorf("parsing keychain data: %w", err)
+	}
+	return &creds, "macOS Keychain", nil
+}
+
+func readClaudeCredentialsFromDisk() (*claudeCredentials, string, error) {
+	path := claudeCredentialsPath()
+	if path == "" {
+		return nil, "", fmt.Errorf("could not determine credentials path")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", err
+	}
+	var creds claudeCredentials
+	if err := json.Unmarshal(data, &creds); err != nil {
+		return nil, "", err
+	}
+	return &creds, path, nil
+}
+
 func claudeCredentialsPath() string {
 	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
 		return filepath.Join(dir, ".credentials.json")
@@ -561,21 +604,6 @@ func claudeCredentialsPath() string {
 	return filepath.Join(homeDir, ".claude", ".credentials.json")
 }
 
-func readClaudeCredentials(path string) (*claudeCredentials, error) {
-	if path == "" {
-		return nil, fmt.Errorf("empty path")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var creds claudeCredentials
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return nil, err
-	}
-	return &creds, nil
-}
-
 // credResult holds a resolved credential to store as a secret.
 type credResult struct {
 	value   string // the secret value to store
@@ -584,7 +612,7 @@ type credResult struct {
 	isOAuth bool
 }
 
-func runClaudeLogin(credPath string) (*credResult, error) {
+func runClaudeLogin() (*credResult, error) {
 	claudeBin, err := exec.LookPath("claude")
 	if err != nil {
 		return nil, fmt.Errorf("Claude Code CLI not found. Install it with `npm install -g @anthropic-ai/claude-code`, then run `irons onboard` again")
@@ -594,19 +622,19 @@ func runClaudeLogin(credPath string) (*credResult, error) {
 	fmt.Println("  Launching Claude Code login...")
 	fmt.Println()
 
-	cmd := exec.Command(claudeBin, "login")
+	cmd := exec.Command(claudeBin, "auth", "login")
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("claude login failed: %w", err)
+		return nil, fmt.Errorf("claude auth login failed: %w", err)
 	}
 
 	fmt.Println()
 	fmt.Println("  \u2713 Claude Code authenticated.")
 
-	// Re-read credentials from disk.
-	creds, err := readClaudeCredentials(credPath)
+	// Re-read credentials from the platform-appropriate store.
+	creds, source, err := findClaudeOAuthCredentials()
 	if err != nil {
 		return nil, fmt.Errorf("reading Claude Code credentials after login: %w", err)
 	}
@@ -618,7 +646,7 @@ func runClaudeLogin(credPath string) (*credResult, error) {
 	return &credResult{
 		value:   string(oauthJSON),
 		envVar:  "CLAUDE_CODE_OAUTH_TOKEN",
-		source:  credPath,
+		source:  source,
 		isOAuth: true,
 	}, nil
 }
