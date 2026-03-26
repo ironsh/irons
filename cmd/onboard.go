@@ -65,10 +65,12 @@ type claudeCredentials struct {
 }
 
 type claudeOAuth struct {
-	AccessToken  string `json:"accessToken"`
-	RefreshToken string `json:"refreshToken"`
-	ExpiresAt    int64  `json:"expiresAt"`
-	Scopes       []string `json:"scopes"`
+	AccessToken      string   `json:"accessToken"`
+	RefreshToken     string   `json:"refreshToken"`
+	ExpiresAt        int64    `json:"expiresAt"`
+	Scopes           []string `json:"scopes"`
+	SubscriptionType string   `json:"subscriptionType,omitempty"`
+	RateLimitTier    string   `json:"rateLimitTier,omitempty"`
 }
 
 var onboardCmd = &cobra.Command{
@@ -550,8 +552,10 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 
 		// Store non-sensitive OAuth metadata as an env var.
 		metadata, _ := json.Marshal(map[string]any{
-			"expiresAt": selected.oauth.ExpiresAt,
-			"scopes":    selected.oauth.Scopes,
+			"expiresAt":        selected.oauth.ExpiresAt,
+			"scopes":           selected.oauth.Scopes,
+			"subscriptionType": selected.oauth.SubscriptionType,
+			"rateLimitTier":    selected.oauth.RateLimitTier,
 		})
 		if _, err := client.EnvVarPut("CLAUDE_OAUTH_METADATA", string(metadata)); err != nil {
 			return fmt.Errorf("storing OAuth metadata: %w", err)
