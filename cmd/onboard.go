@@ -563,7 +563,7 @@ func findClaudeOAuthCredentials() (*claudeCredentials, string, error) {
 
 func readClaudeCredentialsFromKeychain() (*claudeCredentials, string, error) {
 	out, err := exec.Command("security", "find-generic-password",
-		"-s", "claude-credentials",
+		"-s", "Claude Code-credentials",
 		"-w",
 	).Output()
 	if err != nil {
