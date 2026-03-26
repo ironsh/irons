@@ -965,6 +965,140 @@ func (c *Client) ResolvePublicKey(idOrName string) (string, error) {
 	return resp.Data[0].ID, nil
 }
 
+// Agent represents an agent session resource returned by the API.
+type Agent struct {
+	ID        string   `json:"id"`
+	Name      string   `json:"name"`
+	Repo      string   `json:"repo"`
+	Branch    string   `json:"branch,omitempty"`
+	Harness   string   `json:"harness,omitempty"`
+	Prompt    string   `json:"prompt,omitempty"`
+	AgentArgs []string `json:"agent_args,omitempty"`
+	Status    string   `json:"status"`
+	VMID      string   `json:"vm_id"`
+	CreatedAt string   `json:"created_at"`
+}
+
+// CreateAgentRequest represents the request payload for creating an agent.
+type CreateAgentRequest struct {
+	Name      string   `json:"name"`
+	Repo      string   `json:"repo"`
+	Branch    string   `json:"branch,omitempty"`
+	Harness   string   `json:"harness,omitempty"`
+	Prompt    string   `json:"prompt,omitempty"`
+	AgentArgs []string `json:"agent_args,omitempty"`
+}
+
+// ListAgentsResponse represents the paginated response from listing agents.
+type ListAgentsResponse struct {
+	Data    []Agent `json:"data"`
+	HasMore bool    `json:"has_more"`
+	Cursor  *string `json:"cursor,omitempty"`
+}
+
+// AgentsCreate creates a new agent session.
+func (c *Client) AgentsCreate(req CreateAgentRequest) (*Agent, error) {
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	body, err := c.makeRequest("POST", "/agents", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, err
+	}
+
+	agent, err := unwrapData[Agent](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &agent, nil
+}
+
+// AgentsList lists all agents. Supports optional query parameters.
+func (c *Client) AgentsList() (*ListAgentsResponse, error) {
+	body, err := c.makeRequest("GET", "/agents", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agents: %w", err)
+	}
+
+	var listResp ListAgentsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// AgentsListByName lists agents filtered by name.
+func (c *Client) AgentsListByName(name string) (*ListAgentsResponse, error) {
+	q := url.Values{}
+	q.Set("name", name)
+	path := "/agents?" + q.Encode()
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list agents by name: %w", err)
+	}
+
+	var listResp ListAgentsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &listResp, nil
+}
+
+// AgentsGet retrieves a single agent by ID.
+func (c *Client) AgentsGet(id string) (*Agent, error) {
+	path := fmt.Sprintf("/agents/%s", id)
+
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get agent: %w", err)
+	}
+
+	agent, err := unwrapData[Agent](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	return &agent, nil
+}
+
+// AgentsDestroy destroys an agent session and its VM.
+func (c *Client) AgentsDestroy(id string) error {
+	path := fmt.Sprintf("/agents/%s", id)
+
+	_, err := c.makeRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to destroy agent: %w", err)
+	}
+
+	return nil
+}
+
+// ResolveAgent resolves an agent identifier to an agent ID. If idOrName starts
+// with "agt_" it is returned as-is. Otherwise the value is treated as a name
+// and looked up via the list agents endpoint.
+func (c *Client) ResolveAgent(idOrName string) (string, error) {
+	if strings.HasPrefix(idOrName, "agt_") {
+		return idOrName, nil
+	}
+
+	resp, err := c.AgentsListByName(idOrName)
+	if err != nil {
+		return "", fmt.Errorf("resolving agent name %q: %w", idOrName, err)
+	}
+
+	if len(resp.Data) == 0 {
+		return "", fmt.Errorf("no agent found with name %q", idOrName)
+	}
+
+	return resp.Data[0].ID, nil
+}
+
 // SnapshotsCreate creates a new snapshot for the given VM.
 func (c *Client) SnapshotsCreate(vmID string, req CreateSnapshotRequest) (*Snapshot, error) {
 	reqBody, err := json.Marshal(req)

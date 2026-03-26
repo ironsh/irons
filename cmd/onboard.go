@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
@@ -118,7 +120,12 @@ Use --refresh to re-pull local credentials and overwrite what's stored.`,
 		fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
 		fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
 		fmt.Println()
-		fmt.Println("You're all set. Run `irons agents new --repo <url>` to start.")
+
+		// Step 5: Prompt to create first agent.
+		if err := promptFirstAgent(); err != nil {
+			// Non-fatal: user can always run agents new later.
+			fmt.Printf("Run 'irons agents new --repo <url>' when you're ready.\n")
+		}
 
 		return nil
 	},
@@ -408,6 +415,16 @@ func onboardAgentProvider(ctx context.Context, client *api.Client, refresh bool)
 			continue
 		}
 		break
+	}
+
+	// Save the harness choice to config.
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	cfg.Harness = "claude"
+	if err := config.Save(cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
 	}
 
 	return onboardClaudeCode(ctx, client, refresh)
@@ -799,4 +816,99 @@ func storeSecret(client *api.Client, name, envVar, secret string, refresh bool) 
 		return fmt.Errorf("creating secret %q: %w", name, err)
 	}
 	return nil
+}
+
+// promptFirstAgent offers the user a chance to start their first agent session
+// right after onboarding completes.
+func promptFirstAgent() error {
+	// Fetch repos using the GitHub token that was just stored.
+	repos, err := fetchGitHubRepos()
+	if err != nil || len(repos) == 0 {
+		// Can't fetch repos — just show the manual command.
+		return fmt.Errorf("skipping repo prompt")
+	}
+
+	fmt.Println("Want to start an agent now?")
+	fmt.Println()
+	fmt.Println("Your repos:")
+
+	limit := min(len(repos), 10)
+	for i, repo := range repos[:limit] {
+		fmt.Printf("  [%d] %s\n", i+1, repo)
+	}
+	fmt.Printf("  [%d] Other (enter repo URL)\n", limit+1)
+	fmt.Println()
+
+	reader := bufio.NewReader(os.Stdin)
+	fmt.Print("  > ")
+	line, err := reader.ReadString('\n')
+	if err != nil {
+		return fmt.Errorf("reading input: %w", err)
+	}
+	line = strings.TrimSpace(line)
+
+	if line == "" {
+		return fmt.Errorf("dismissed")
+	}
+
+	var repo string
+	idx, err := strconv.Atoi(line)
+	if err == nil {
+		if idx >= 1 && idx <= limit {
+			repo = repos[idx-1]
+		} else if idx == limit+1 {
+			fmt.Print("Repo URL: ")
+			urlLine, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("reading input: %w", err)
+			}
+			repo = strings.TrimSpace(urlLine)
+			if repo == "" {
+				return fmt.Errorf("dismissed")
+			}
+		} else {
+			return fmt.Errorf("invalid selection")
+		}
+	} else {
+		return fmt.Errorf("invalid selection")
+	}
+
+	fmt.Println()
+
+	// Run agents new with the selected repo as a subprocess to avoid
+	// initialization cycles between onboard and agents commands.
+	bin, _ := os.Executable()
+	cmd := exec.Command(bin, "agents", "new", "--repo", repo)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd.Run()
+}
+
+// fetchGitHubRepos fetches the user's GitHub repos using the gh CLI.
+// Returns repo full names sorted by most recently pushed.
+func fetchGitHubRepos() ([]string, error) {
+	ghBin, err := exec.LookPath("gh")
+	if err != nil {
+		return nil, fmt.Errorf("gh CLI not found")
+	}
+
+	cmd := exec.Command(ghBin, "api", "user/repos",
+		"--jq", "sort_by(.pushed_at) | reverse | .[].full_name",
+		"--paginate",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("fetching repos: %w", err)
+	}
+
+	var repos []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			repos = append(repos, line)
+		}
+	}
+
+	return repos, nil
 }
