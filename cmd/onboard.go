@@ -130,7 +130,7 @@ func init() {
 func onboardAccount(ctx context.Context) error {
 	fmt.Println("Account")
 
-	if viper.GetString("api-key") != "" {
+	if isAuthenticated() {
 		fmt.Println("  \u2713 Authenticated.")
 		fmt.Println()
 		return nil

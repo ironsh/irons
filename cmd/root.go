@@ -32,7 +32,7 @@ blocking them — useful for auditing before locking things down.`,
 			return
 		}
 
-		if viper.GetString("api-key") == "" {
+		if !isAuthenticated() {
 			requireAuth()
 		}
 	},
