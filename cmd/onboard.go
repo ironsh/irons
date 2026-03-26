@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
@@ -10,7 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -89,51 +87,59 @@ Use --refresh to re-pull local credentials and overwrite what's stored.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		refresh, _ := cmd.Flags().GetBool("refresh")
-
-		printBanner()
-
-		// Step 1: Account
-		if err := onboardAccount(ctx); err != nil {
-			return err
-		}
-
-		// Build client now that we have an API key.
-		client := newClient()
-
-		// Step 2: GitHub token
-		if err := onboardGitHub(ctx, client, refresh); err != nil {
-			return err
-		}
-
-		// Step 3: Agent provider
-		if err := onboardAgentProvider(ctx, client, refresh); err != nil {
-			return err
-		}
-
-		// Step 4: SSH key
-		if err := onboardSSHKey(client); err != nil {
-			return err
-		}
-
-		fmt.Println()
-		fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
-		fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
-		fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
-		fmt.Println()
-
-		// Step 5: Prompt to create first agent.
-		if err := promptFirstAgent(); err != nil {
-			// Non-fatal: user can always run agents new later.
-			fmt.Printf("Run 'irons agents new --repo <url>' when you're ready.\n")
-		}
-
-		return nil
+		return runOnboard(ctx, refresh, true)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(onboardCmd)
 	onboardCmd.Flags().Bool("refresh", false, "Re-pull local credentials and overwrite what's stored")
+}
+
+// runOnboard is the standalone onboarding logic, callable from both the cobra
+// command and from other code (e.g. agents new credential check).
+// When promptAgent is true, the user is prompted to start their first agent.
+func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
+	printBanner()
+
+	// Step 1: Account
+	if err := onboardAccount(ctx); err != nil {
+		return err
+	}
+
+	// Build client now that we have an API key.
+	client := newClient()
+
+	// Step 2: GitHub token
+	if err := onboardGitHub(ctx, client, refresh); err != nil {
+		return err
+	}
+
+	// Step 3: Agent provider
+	if err := onboardAgentProvider(ctx, client, refresh); err != nil {
+		return err
+	}
+
+	// Step 4: SSH key
+	if err := onboardSSHKey(client); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
+	fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
+	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
+	fmt.Println()
+
+	if promptAgent {
+		// Step 5: Prompt to create first agent.
+		if err := promptFirstAgent(ctx); err != nil {
+			// Non-fatal: user can always run agents new later.
+			fmt.Printf("Run 'irons agents new --repo <url>' when you're ready.\n")
+		}
+	}
+
+	return nil
 }
 
 // onboardAccount handles Step 1: iron.sh account authentication.
@@ -820,7 +826,7 @@ func storeSecret(client *api.Client, name, envVar, secret string, refresh bool) 
 
 // promptFirstAgent offers the user a chance to start their first agent session
 // right after onboarding completes.
-func promptFirstAgent() error {
+func promptFirstAgent(ctx context.Context) error {
 	// Fetch repos using the GitHub token that was just stored.
 	repos, err := fetchGitHubRepos()
 	if err != nil || len(repos) == 0 {
@@ -830,59 +836,38 @@ func promptFirstAgent() error {
 
 	fmt.Println("Want to start an agent now?")
 	fmt.Println()
-	fmt.Println("Your repos:")
+
+	const otherValue = "__other__"
 
 	limit := min(len(repos), 10)
-	for i, repo := range repos[:limit] {
-		fmt.Printf("  [%d] %s\n", i+1, repo)
+	var options []tap.SelectOption[string]
+	for _, repo := range repos[:limit] {
+		options = append(options, tap.SelectOption[string]{Value: repo, Label: repo})
 	}
-	fmt.Printf("  [%d] Other (enter repo URL)\n", limit+1)
-	fmt.Println()
+	options = append(options, tap.SelectOption[string]{Value: otherValue, Label: "Other (enter repo URL)"})
 
-	reader := bufio.NewReader(os.Stdin)
-	fmt.Print("  > ")
-	line, err := reader.ReadString('\n')
-	if err != nil {
-		return fmt.Errorf("reading input: %w", err)
-	}
-	line = strings.TrimSpace(line)
+	choice := tap.Select(ctx, tap.SelectOptions[string]{
+		Message: "Pick a repo",
+		Options: options,
+	})
 
-	if line == "" {
-		return fmt.Errorf("dismissed")
-	}
-
-	var repo string
-	idx, err := strconv.Atoi(line)
-	if err == nil {
-		if idx >= 1 && idx <= limit {
-			repo = repos[idx-1]
-		} else if idx == limit+1 {
-			fmt.Print("Repo URL: ")
-			urlLine, err := reader.ReadString('\n')
-			if err != nil {
-				return fmt.Errorf("reading input: %w", err)
-			}
-			repo = strings.TrimSpace(urlLine)
-			if repo == "" {
-				return fmt.Errorf("dismissed")
-			}
-		} else {
-			return fmt.Errorf("invalid selection")
-		}
-	} else {
-		return fmt.Errorf("invalid selection")
+	repo := choice
+	if choice == otherValue {
+		repo = tap.Text(ctx, tap.TextOptions{
+			Message: "Repo URL",
+			Validate: func(s string) error {
+				if strings.TrimSpace(s) == "" {
+					return fmt.Errorf("repo URL is required")
+				}
+				return nil
+			},
+		})
+		repo = strings.TrimSpace(repo)
 	}
 
 	fmt.Println()
 
-	// Run agents new with the selected repo as a subprocess to avoid
-	// initialization cycles between onboard and agents commands.
-	bin, _ := os.Executable()
-	cmd := exec.Command(bin, "agents", "new", "--repo", repo)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	return runAgentsNew(ctx, agentsNewOpts{Repo: repo})
 }
 
 // fetchGitHubRepos fetches the user's GitHub repos using the gh CLI.

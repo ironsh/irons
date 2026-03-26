@@ -1,14 +1,12 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path"
-	"strconv"
 	"strings"
 	"time"
 
@@ -16,7 +14,19 @@ import (
 	"github.com/ironsh/irons/config"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
+	"github.com/yarlson/tap"
 )
+
+// agentsNewOpts holds the parsed flags for agents new.
+type agentsNewOpts struct {
+	Repo       string
+	Branch     string
+	Prompt     string
+	PromptFile string
+	Name       string
+	NoAttach   bool
+	AgentArgs  []string
+}
 
 // agentsCmd is the parent command for agent subcommands.
 var agentsCmd = &cobra.Command{
@@ -47,9 +57,6 @@ Examples:
   irons agents new --repo acme/api -- --remote
   irons agents new --repo acme/api --no-attach`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		ctx := cmd.Context()
-		client := newClient()
-
 		repo, _ := cmd.Flags().GetString("repo")
 		branch, _ := cmd.Flags().GetString("branch")
 		prompt, _ := cmd.Flags().GetString("prompt")
@@ -58,72 +65,21 @@ Examples:
 		noAttach, _ := cmd.Flags().GetBool("no-attach")
 
 		// Capture agent args (everything after --)
-		agentArgs := cmd.ArgsLenAtDash()
+		dashIdx := cmd.ArgsLenAtDash()
 		var extraArgs []string
-		if agentArgs >= 0 {
-			extraArgs = args[agentArgs:]
+		if dashIdx >= 0 {
+			extraArgs = args[dashIdx:]
 		}
 
-		// Step 1: Check onboarding credentials.
-		if err := checkOnboardingSecrets(client); err != nil {
-			return err
-		}
-
-		// Step 2: Resolve name from repo if not provided.
-		if name == "" {
-			name = deriveNameFromRepo(repo)
-		}
-
-		// Step 3: Read prompt file if provided.
-		if promptFile != "" {
-			data, err := os.ReadFile(promptFile)
-			if err != nil {
-				return fmt.Errorf("reading prompt file: %w", err)
-			}
-			prompt = string(data)
-		}
-
-		// Step 4: Determine harness from config.
-		harness := "claude"
-		if cfg, err := config.Load(); err == nil && cfg.Harness != "" {
-			harness = cfg.Harness
-		}
-
-		// Step 5: Create agent (with retry on name collision).
-		fmt.Println("✓ Credentials verified")
-
-		req := api.CreateAgentRequest{
-			Name:      name,
-			Repo:      repo,
-			Branch:    branch,
-			Harness:   harness,
-			Prompt:    prompt,
-			AgentArgs: extraArgs,
-		}
-
-		agent, err := createAgentWithRetry(client, req)
-		if err != nil {
-			return fmt.Errorf("creating agent: %w", err)
-		}
-
-		// Step 6: Wait for agent to be running.
-		agent, err = waitForAgent(ctx, client, agent.ID)
-		if err != nil {
-			return err
-		}
-
-		fmt.Println("✓ VM ready")
-
-		if noAttach {
-			fmt.Println()
-			fmt.Printf("Session: %s\n", agent.Name)
-			fmt.Printf("Attach:  irons agents attach %s\n", agent.Name)
-			return nil
-		}
-
-		// Step 7: Attach via SSH + tmux.
-		fmt.Println("  Connecting...")
-		return sshAttachToAgent(client, agent)
+		return runAgentsNew(cmd.Context(), agentsNewOpts{
+			Repo:       repo,
+			Branch:     branch,
+			Prompt:     prompt,
+			PromptFile: promptFile,
+			Name:       name,
+			NoAttach:   noAttach,
+			AgentArgs:  extraArgs,
+		})
 	},
 }
 
@@ -155,7 +111,7 @@ Examples:
 			agent = a
 		} else {
 			// No argument: pick from active agents.
-			a, err := pickAgent(client)
+			a, err := pickAgent(cmd.Context(), client)
 			if err != nil {
 				return err
 			}
@@ -240,6 +196,75 @@ func init() {
 	agentsNewCmd.MarkFlagRequired("repo")
 }
 
+// runAgentsNew is the standalone logic for creating a new agent session,
+// callable from both the cobra command and from other code (e.g. post-onboarding).
+func runAgentsNew(ctx context.Context, opts agentsNewOpts) error {
+	client := newClient()
+
+	// Step 1: Check onboarding credentials.
+	if err := checkOnboardingSecrets(ctx, client); err != nil {
+		return err
+	}
+
+	// Step 2: Resolve name from repo if not provided.
+	name := opts.Name
+	if name == "" {
+		name = deriveNameFromRepo(opts.Repo)
+	}
+
+	// Step 3: Read prompt file if provided.
+	prompt := opts.Prompt
+	if opts.PromptFile != "" {
+		data, err := os.ReadFile(opts.PromptFile)
+		if err != nil {
+			return fmt.Errorf("reading prompt file: %w", err)
+		}
+		prompt = string(data)
+	}
+
+	// Step 4: Determine harness from config.
+	harness := "claude"
+	if cfg, err := config.Load(); err == nil && cfg.Harness != "" {
+		harness = cfg.Harness
+	}
+
+	// Step 5: Create agent (with retry on name collision).
+	fmt.Println("✓ Credentials verified")
+
+	req := api.CreateAgentRequest{
+		Name:      name,
+		Repo:      opts.Repo,
+		Branch:    opts.Branch,
+		Harness:   harness,
+		Prompt:    prompt,
+		AgentArgs: opts.AgentArgs,
+	}
+
+	agent, err := createAgentWithRetry(client, req)
+	if err != nil {
+		return fmt.Errorf("creating agent: %w", err)
+	}
+
+	// Step 6: Wait for agent to be running.
+	agent, err = waitForAgent(ctx, client, agent.ID)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("✓ VM ready")
+
+	if opts.NoAttach {
+		fmt.Println()
+		fmt.Printf("Session: %s\n", agent.Name)
+		fmt.Printf("Attach:  irons agents attach %s\n", agent.Name)
+		return nil
+	}
+
+	// Step 7: Attach via SSH + tmux.
+	fmt.Println("  Connecting...")
+	return sshAttachToAgent(client, agent)
+}
+
 // deriveNameFromRepo extracts a session name from a repo URL.
 // "github.com/acme/my-app" → "my-app", "acme/my-app" → "my-app"
 func deriveNameFromRepo(repo string) string {
@@ -254,8 +279,8 @@ func deriveNameFromRepo(repo string) string {
 }
 
 // checkOnboardingSecrets verifies the user has the required secrets for agent
-// creation. If any are missing, it runs the onboard flow.
-func checkOnboardingSecrets(client *api.Client) error {
+// creation. If any are missing, it runs the onboard flow directly.
+func checkOnboardingSecrets(ctx context.Context, client *api.Client) error {
 	resp, err := client.SecretsList()
 	if err != nil {
 		return fmt.Errorf("checking secrets: %w", err)
@@ -277,13 +302,9 @@ func checkOnboardingSecrets(client *api.Client) error {
 	fmt.Println("Missing required credentials. Running setup...")
 	fmt.Println()
 
-	// Run the onboard flow by executing the binary's onboard command.
-	bin, _ := os.Executable()
-	cmd := exec.Command(bin, "onboard")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	// Run onboard without the post-onboarding agent prompt (we're already
+	// in the process of creating an agent).
+	return runOnboard(ctx, false, false)
 }
 
 // createAgentWithRetry attempts to create an agent, retrying with a
@@ -401,7 +422,7 @@ func resolveAgentFull(client *api.Client, idOrName string) (*api.Agent, error) {
 }
 
 // pickAgent handles the no-argument case for attach: select from active agents.
-func pickAgent(client *api.Client) (*api.Agent, error) {
+func pickAgent(ctx context.Context, client *api.Client) (*api.Agent, error) {
 	resp, err := client.AgentsList()
 	if err != nil {
 		return nil, fmt.Errorf("listing agents: %w", err)
@@ -416,30 +437,18 @@ func pickAgent(client *api.Client) (*api.Agent, error) {
 		printAgentsTable(resp.Data)
 		fmt.Println()
 
-		reader := bufio.NewReader(os.Stdin)
-		for {
-			fmt.Print("Which agent? ")
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				return nil, fmt.Errorf("reading input: %w", err)
-			}
-			line = strings.TrimSpace(line)
-
-			// Try as a 1-based index.
-			idx, err := strconv.Atoi(line)
-			if err == nil && idx >= 1 && idx <= len(resp.Data) {
-				return &resp.Data[idx-1], nil
-			}
-
-			// Try as a name or ID.
-			for i := range resp.Data {
-				if resp.Data[i].Name == line || resp.Data[i].ID == line {
-					return &resp.Data[i], nil
-				}
-			}
-
-			fmt.Printf("Invalid selection %q. Enter a number (1-%d), name, or ID.\n", line, len(resp.Data))
+		var options []tap.SelectOption[int]
+		for i, a := range resp.Data {
+			label := fmt.Sprintf("%s (%s)", a.Name, a.Repo)
+			options = append(options, tap.SelectOption[int]{Value: i, Label: label})
 		}
+
+		idx := tap.Select(ctx, tap.SelectOptions[int]{
+			Message: "Which agent?",
+			Options: options,
+		})
+
+		return &resp.Data[idx], nil
 	}
 }
 
