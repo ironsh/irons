@@ -540,12 +540,21 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 	fmt.Println("  Storing in iron.sh secret store.")
 
 	if selected.oauth != nil {
-		// Store access token and refresh token as separate secrets.
+		// Store access and refresh tokens as separate secrets (proxy-swappable).
 		if err := storeSecret(client, secretClaudeOAuthAccess, "CLAUDE_OAUTH_ACCESS_TOKEN", selected.oauth.AccessToken, refresh); err != nil {
 			return err
 		}
 		if err := storeSecret(client, secretClaudeOAuthRefresh, "CLAUDE_OAUTH_REFRESH_TOKEN", selected.oauth.RefreshToken, refresh); err != nil {
 			return err
+		}
+
+		// Store non-sensitive OAuth metadata as an env var.
+		metadata, _ := json.Marshal(map[string]any{
+			"expiresAt": selected.oauth.ExpiresAt,
+			"scopes":    selected.oauth.Scopes,
+		})
+		if _, err := client.EnvVarPut("CLAUDE_OAUTH_METADATA", string(metadata)); err != nil {
+			return fmt.Errorf("storing OAuth metadata: %w", err)
 		}
 	} else {
 		if err := storeSecret(client, secretClaudeAgent, "ANTHROPIC_API_KEY", selected.apiKey, refresh); err != nil {

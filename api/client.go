@@ -267,6 +267,87 @@ func (c *Client) CreateUser(req CreateUserRequest) (*CreateUserResponse, error) 
 	return &resp, nil
 }
 
+// EnvVar represents an env var resource returned by the API.
+type EnvVar struct {
+	ID        string `json:"id"`
+	Key       string `json:"key"`
+	Value     string `json:"value"`
+	CreatedAt string `json:"created_at"`
+	UpdatedAt string `json:"updated_at"`
+}
+
+// UpsertEnvVarRequest represents the request payload for creating/updating an env var.
+type UpsertEnvVarRequest struct {
+	Value string `json:"value"`
+}
+
+// ListEnvVarsResponse represents the paginated response from listing env vars.
+type ListEnvVarsResponse struct {
+	Data    []EnvVar `json:"data"`
+	HasMore bool     `json:"has_more"`
+	Cursor  *string  `json:"cursor,omitempty"`
+}
+
+// EnvVarPut creates or updates an env var by key.
+func (c *Client) EnvVarPut(key string, value string) (*EnvVar, error) {
+	req := UpsertEnvVarRequest{Value: value}
+	reqBody, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	path := fmt.Sprintf("/env/%s", key)
+	body, err := c.makeRequest("PUT", path, bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to upsert env var: %w", err)
+	}
+
+	ev, err := unwrapData[EnvVar](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &ev, nil
+}
+
+// EnvVarGet retrieves an env var by key.
+func (c *Client) EnvVarGet(key string) (*EnvVar, error) {
+	path := fmt.Sprintf("/env/%s", key)
+	body, err := c.makeRequest("GET", path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get env var: %w", err)
+	}
+
+	ev, err := unwrapData[EnvVar](body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &ev, nil
+}
+
+// EnvVarList lists all env vars.
+func (c *Client) EnvVarList() (*ListEnvVarsResponse, error) {
+	body, err := c.makeRequest("GET", "/env", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list env vars: %w", err)
+	}
+
+	var listResp ListEnvVarsResponse
+	if err := json.Unmarshal(body, &listResp); err != nil {
+		return nil, fmt.Errorf("failed to decode response: %w", err)
+	}
+	return &listResp, nil
+}
+
+// EnvVarDelete deletes an env var by key.
+func (c *Client) EnvVarDelete(key string) error {
+	path := fmt.Sprintf("/env/%s", key)
+	_, err := c.makeRequest("DELETE", path, nil)
+	if err != nil {
+		return fmt.Errorf("failed to delete env var: %w", err)
+	}
+	return nil
+}
+
 // dataWrapper is used to decode singular API responses wrapped in a "data" key.
 type dataWrapper[T any] struct {
 	Data T `json:"data"`
