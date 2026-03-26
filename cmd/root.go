@@ -28,11 +28,11 @@ internal API) and block everything else. Rules can also be set to warn mode, whi
 blocking them — useful for auditing before locking things down.`,
 	PersistentPreRun: func(cmd *cobra.Command, args []string) {
 		// Skip validation for commands that don't need an API key.
-		if cmd.Name() == "help" || cmd.Name() == "login" || (cmd.Name() == "irons" && len(args) == 0) {
+		if cmd.Name() == "help" || cmd.Name() == "login" || cmd.Name() == "onboard" || (cmd.Name() == "irons" && len(args) == 0) {
 			return
 		}
 
-		if viper.GetString("api-key") == "" {
+		if !isAuthenticated() {
 			requireAuth()
 		}
 	},

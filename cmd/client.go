@@ -8,6 +8,12 @@ import (
 	"github.com/spf13/viper"
 )
 
+// isAuthenticated returns true if an API key is available from any source
+// (flag, IRONS_API_KEY env var, or config file).
+func isAuthenticated() bool {
+	return viper.GetString("api-key") != ""
+}
+
 // requireAuth prints a descriptive error message when no API key is available
 // and exits with a non-zero status code. Call this whenever a command requires
 // authentication but none is configured.
