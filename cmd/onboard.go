@@ -426,79 +426,80 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 		}
 	}
 
-	// Try to find credentials from local sources.
-	var found *credResult
-
-	// 1. Check Claude Code OAuth on disk (Linux path).
+	// Collect all available credentials from local sources.
+	var candidates []credResult
 	credPath := claudeCredentialsPath()
+
+	// 1. Claude Code OAuth on disk.
 	if creds, err := readClaudeCredentials(credPath); err == nil && creds.ClaudeAIOAuth != nil {
 		oauth := creds.ClaudeAIOAuth
-		if oauth.AccessToken != "" {
-			// Check if expired.
-			if time.Now().UnixMilli() < oauth.ExpiresAt {
-				oauthJSON, _ := json.Marshal(oauth)
-				found = &credResult{
-					value:  string(oauthJSON),
-					envVar: "CLAUDE_CODE_OAUTH_TOKEN",
-					source: credPath,
-					isOAuth: true,
-				}
-			}
+		if oauth.AccessToken != "" && time.Now().UnixMilli() < oauth.ExpiresAt {
+			oauthJSON, _ := json.Marshal(oauth)
+			candidates = append(candidates, credResult{
+				value:   string(oauthJSON),
+				envVar:  "CLAUDE_CODE_OAUTH_TOKEN",
+				source:  credPath,
+				isOAuth: true,
+			})
 		}
 	}
 
 	// 2. $ANTHROPIC_API_KEY
-	if found == nil {
-		if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-			found = &credResult{
-				value:  key,
-				envVar: "ANTHROPIC_API_KEY",
-				source: "$ANTHROPIC_API_KEY",
-			}
-		}
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		candidates = append(candidates, credResult{
+			value:  key,
+			envVar: "ANTHROPIC_API_KEY",
+			source: "$ANTHROPIC_API_KEY",
+		})
 	}
 
 	// 3. $CLAUDE_CODE_OAUTH_TOKEN
-	if found == nil {
-		if token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"); token != "" {
-			found = &credResult{
-				value:  token,
-				envVar: "CLAUDE_CODE_OAUTH_TOKEN",
-				source: "$CLAUDE_CODE_OAUTH_TOKEN",
-				isOAuth: true,
-			}
-		}
+	if token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"); token != "" {
+		candidates = append(candidates, credResult{
+			value:   token,
+			envVar:  "CLAUDE_CODE_OAUTH_TOKEN",
+			source:  "$CLAUDE_CODE_OAUTH_TOKEN",
+			isOAuth: true,
+		})
 	}
 
-	if found != nil {
-		if found.isOAuth {
-			fmt.Printf("  Found OAuth credentials in %s\n", found.source)
-		} else {
-			fmt.Printf("  Found credentials in %s\n", found.source)
+	var found *credResult
+
+	if len(candidates) > 0 {
+		// Build select options: one per found credential, plus manual options.
+		const (
+			choicePasteKey    = -1
+			choiceClaudeLogin = -2
+		)
+		var options []tap.SelectOption[int]
+		for i, c := range candidates {
+			label := fmt.Sprintf("Use credentials from %s", c.source)
+			if c.isOAuth {
+				label = fmt.Sprintf("Use OAuth credentials from %s", c.source)
+			}
+			options = append(options, tap.SelectOption[int]{Value: i, Label: label})
 		}
-		fmt.Println()
+		options = append(options,
+			tap.SelectOption[int]{Value: choicePasteKey, Label: "Paste an API key instead"},
+			tap.SelectOption[int]{Value: choiceClaudeLogin, Label: "Log in with Claude Code"},
+		)
 
 		choice := tap.Select(ctx, tap.SelectOptions[int]{
-			Message: "Choose an option",
-			Options: []tap.SelectOption[int]{
-				{Value: 1, Label: "Use these credentials"},
-				{Value: 2, Label: "Paste an API key instead"},
-				{Value: 3, Label: "Log in with Claude Code"},
-			},
+			Message: "Choose credentials",
+			Options: options,
 		})
 
-		switch choice {
-		case 1:
-			// Use found credentials.
-		case 2:
-			found = nil // will prompt below
-		case 3:
+		switch {
+		case choice >= 0:
+			found = &candidates[choice]
+		case choice == choiceClaudeLogin:
 			result, err := runClaudeLogin(credPath)
 			if err != nil {
 				return err
 			}
 			found = result
 		}
+		// choicePasteKey: found stays nil, will prompt below
 	} else {
 		fmt.Println("  No credentials found.")
 		fmt.Println()
@@ -511,10 +512,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 			},
 		})
 
-		switch choice {
-		case 1:
-			// will prompt below
-		case 2:
+		if choice == 2 {
 			result, err := runClaudeLogin(credPath)
 			if err != nil {
 				return err
