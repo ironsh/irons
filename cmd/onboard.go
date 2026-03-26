@@ -87,46 +87,59 @@ Use --refresh to re-pull local credentials and overwrite what's stored.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		ctx := cmd.Context()
 		refresh, _ := cmd.Flags().GetBool("refresh")
-
-		printBanner()
-
-		// Step 1: Account
-		if err := onboardAccount(ctx); err != nil {
-			return err
-		}
-
-		// Build client now that we have an API key.
-		client := newClient()
-
-		// Step 2: GitHub token
-		if err := onboardGitHub(ctx, client, refresh); err != nil {
-			return err
-		}
-
-		// Step 3: Agent provider
-		if err := onboardAgentProvider(ctx, client, refresh); err != nil {
-			return err
-		}
-
-		// Step 4: SSH key
-		if err := onboardSSHKey(client); err != nil {
-			return err
-		}
-
-		fmt.Println()
-		fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
-		fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
-		fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
-		fmt.Println()
-		fmt.Println("You're all set. Run `irons agents new --repo <url>` to start.")
-
-		return nil
+		return runOnboard(ctx, refresh, true)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(onboardCmd)
 	onboardCmd.Flags().Bool("refresh", false, "Re-pull local credentials and overwrite what's stored")
+}
+
+// runOnboard is the standalone onboarding logic, callable from both the cobra
+// command and from other code (e.g. agents new credential check).
+// When promptAgent is true, the user is prompted to start their first agent.
+func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
+	printBanner()
+
+	// Step 1: Account
+	if err := onboardAccount(ctx); err != nil {
+		return err
+	}
+
+	// Build client now that we have an API key.
+	client := newClient()
+
+	// Step 2: GitHub token
+	if err := onboardGitHub(ctx, client, refresh); err != nil {
+		return err
+	}
+
+	// Step 3: Agent provider
+	if err := onboardAgentProvider(ctx, client, refresh); err != nil {
+		return err
+	}
+
+	// Step 4: SSH key
+	if err := onboardSSHKey(client); err != nil {
+		return err
+	}
+
+	fmt.Println()
+	fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
+	fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
+	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
+	fmt.Println()
+
+	if promptAgent {
+		// Step 5: Prompt to create first agent.
+		if err := promptFirstAgent(ctx); err != nil {
+			// Non-fatal: user can always run agents new later.
+			fmt.Printf("Run 'irons agents new --repo <url>' when you're ready.\n")
+		}
+	}
+
+	return nil
 }
 
 // onboardAccount handles Step 1: iron.sh account authentication.
@@ -309,7 +322,7 @@ func onboardGitHub(ctx context.Context, client *api.Client, refresh bool) error 
 	fmt.Println("GitHub")
 
 	if !refresh {
-		resp, err := client.SecretsListByName("github-agent")
+		resp, err := client.SecretsListByName(SecretGitHubAgent)
 		if err != nil {
 			return fmt.Errorf("checking github-agent secret: %w", err)
 		}
@@ -380,7 +393,7 @@ func onboardGitHub(ctx context.Context, client *api.Client, refresh bool) error 
 	fmt.Println()
 	fmt.Println("  Storing as GITHUB_TOKEN in iron.sh secret store.")
 
-	if err := storeSecret(client, "github-agent", "GITHUB_TOKEN", strings.TrimSpace(token), refresh); err != nil {
+	if err := storeSecret(client, SecretGitHubAgent, "GITHUB_TOKEN", strings.TrimSpace(token), refresh); err != nil {
 		return err
 	}
 
@@ -410,14 +423,25 @@ func onboardAgentProvider(ctx context.Context, client *api.Client, refresh bool)
 		break
 	}
 
+	// Save the harness choice to config.
+	cfg, err := config.Load()
+	if err != nil {
+		return fmt.Errorf("loading config: %w", err)
+	}
+	cfg.Harness = "claude"
+	if err := config.Save(cfg); err != nil {
+		return fmt.Errorf("saving config: %w", err)
+	}
+
 	return onboardClaudeCode(ctx, client, refresh)
 }
 
-// Claude Code secret names.
+// Secret names used during onboarding and credential checks.
 const (
-	secretClaudeAgent       = "claude-code-agent"        // API key
-	secretClaudeOAuthAccess = "claude-code-oauth-access-token"  // OAuth access token
-	secretClaudeOAuthRefresh = "claude-code-oauth-refresh-token" // OAuth refresh token
+	SecretGitHubAgent    = "agent-github-agent-token"
+	SecretClaudeOAuthAcc = "agent-claude-oauth-access-token"
+	SecretClaudeOAuthRef = "agent-claude-oauth-refresh-token"
+	SecretClaudeAPIKey   = "agent-claude-api-key"
 )
 
 func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) error {
@@ -474,6 +498,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 		const (
 			choicePasteKey    = -1
 			choiceClaudeLogin = -2
+			choiceSetUpLater  = -3
 		)
 		var options []tap.SelectOption[int]
 		for i, c := range candidates {
@@ -486,6 +511,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 		options = append(options,
 			tap.SelectOption[int]{Value: choicePasteKey, Label: "Paste an API key instead"},
 			tap.SelectOption[int]{Value: choiceClaudeLogin, Label: "Log in with Claude Code"},
+			tap.SelectOption[int]{Value: choiceSetUpLater, Label: "Set up later"},
 		)
 
 		choice := tap.Select(ctx, tap.SelectOptions[int]{
@@ -502,6 +528,12 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 				return err
 			}
 			selected = &claudeCandidate{oauth: oauth, source: "Claude Code login"}
+		case choice == choiceSetUpLater:
+			fmt.Println()
+			fmt.Println("  ⚠ Warning: Claude credentials won't be proxied to agents by default.")
+			fmt.Println("  Run `irons onboard --refresh` later to configure them.")
+			fmt.Println()
+			return nil
 		}
 	} else {
 		fmt.Println("  No credentials found.")
@@ -512,15 +544,23 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 			Options: []tap.SelectOption[int]{
 				{Value: 1, Label: "Paste an API key"},
 				{Value: 2, Label: "Log in with Claude Code"},
+				{Value: 3, Label: "Set up later"},
 			},
 		})
 
-		if choice == 2 {
+		switch choice {
+		case 2:
 			oauth, err := runClaudeLogin()
 			if err != nil {
 				return err
 			}
 			selected = &claudeCandidate{oauth: oauth, source: "Claude Code login"}
+		case 3:
+			fmt.Println()
+			fmt.Println("  ⚠ Warning: Claude credentials won't be proxied to agents by default.")
+			fmt.Println("  Run `irons onboard --refresh` later to configure them.")
+			fmt.Println()
+			return nil
 		}
 	}
 
@@ -543,10 +583,10 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 
 	if selected.oauth != nil {
 		// Store access and refresh tokens as separate secrets (proxy-swappable).
-		if err := storeSecret(client, secretClaudeOAuthAccess, "CLAUDE_OAUTH_ACCESS_TOKEN", selected.oauth.AccessToken, refresh); err != nil {
+		if err := storeSecret(client, SecretClaudeOAuthAcc, "CLAUDE_OAUTH_ACCESS_TOKEN", selected.oauth.AccessToken, refresh); err != nil {
 			return err
 		}
-		if err := storeSecret(client, secretClaudeOAuthRefresh, "CLAUDE_OAUTH_REFRESH_TOKEN", selected.oauth.RefreshToken, refresh); err != nil {
+		if err := storeSecret(client, SecretClaudeOAuthRef, "CLAUDE_OAUTH_REFRESH_TOKEN", selected.oauth.RefreshToken, refresh); err != nil {
 			return err
 		}
 
@@ -561,7 +601,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 			return fmt.Errorf("storing OAuth metadata: %w", err)
 		}
 	} else {
-		if err := storeSecret(client, secretClaudeAgent, "ANTHROPIC_API_KEY", selected.apiKey, refresh); err != nil {
+		if err := storeSecret(client, SecretClaudeAPIKey, "ANTHROPIC_API_KEY", selected.apiKey, refresh); err != nil {
 			return err
 		}
 	}
@@ -574,7 +614,7 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 // claudeCodeSecretsExist returns true if any Claude Code secrets are already
 // configured (either an API key secret or OAuth token secrets).
 func claudeCodeSecretsExist(client *api.Client) bool {
-	for _, name := range []string{secretClaudeAgent, secretClaudeOAuthAccess} {
+	for _, name := range []string{SecretClaudeAPIKey, SecretClaudeOAuthAcc} {
 		resp, err := client.SecretsListByName(name)
 		if err == nil && len(resp.Data) > 0 {
 			return true
@@ -799,4 +839,78 @@ func storeSecret(client *api.Client, name, envVar, secret string, refresh bool) 
 		return fmt.Errorf("creating secret %q: %w", name, err)
 	}
 	return nil
+}
+
+// promptFirstAgent offers the user a chance to start their first agent session
+// right after onboarding completes.
+func promptFirstAgent(ctx context.Context) error {
+	// Fetch repos using the GitHub token that was just stored.
+	repos, err := fetchGitHubRepos()
+	if err != nil || len(repos) == 0 {
+		// Can't fetch repos — just show the manual command.
+		return fmt.Errorf("skipping repo prompt")
+	}
+
+	fmt.Println("Want to start an agent now?")
+	fmt.Println()
+
+	const otherValue = "__other__"
+
+	limit := min(len(repos), 10)
+	var options []tap.SelectOption[string]
+	for _, repo := range repos[:limit] {
+		options = append(options, tap.SelectOption[string]{Value: repo, Label: repo})
+	}
+	options = append(options, tap.SelectOption[string]{Value: otherValue, Label: "Other (enter repo URL)"})
+
+	choice := tap.Select(ctx, tap.SelectOptions[string]{
+		Message: "Pick a repo",
+		Options: options,
+	})
+
+	repo := choice
+	if choice == otherValue {
+		repo = tap.Text(ctx, tap.TextOptions{
+			Message: "Repo URL",
+			Validate: func(s string) error {
+				if strings.TrimSpace(s) == "" {
+					return fmt.Errorf("repo URL is required")
+				}
+				return nil
+			},
+		})
+		repo = strings.TrimSpace(repo)
+	}
+
+	fmt.Println()
+
+	return runAgentsNew(ctx, agentsNewOpts{Repo: repo})
+}
+
+// fetchGitHubRepos fetches the user's GitHub repos using the gh CLI.
+// Returns repo full names sorted by most recently pushed.
+func fetchGitHubRepos() ([]string, error) {
+	ghBin, err := exec.LookPath("gh")
+	if err != nil {
+		return nil, fmt.Errorf("gh CLI not found")
+	}
+
+	cmd := exec.Command(ghBin, "api", "user/repos",
+		"--jq", "sort_by(.pushed_at) | reverse | .[].full_name",
+		"--paginate",
+	)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("fetching repos: %w", err)
+	}
+
+	var repos []string
+	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			repos = append(repos, line)
+		}
+	}
+
+	return repos, nil
 }
