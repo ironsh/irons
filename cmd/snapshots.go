@@ -119,7 +119,7 @@ Examples:
 		jsonOut, _ := cmd.Flags().GetBool("json")
 		client := newClient()
 
-		var resp *api.ListSnapshotsResponse
+		var resp *api.ListResponse[api.Snapshot]
 		var err error
 
 		if len(args) == 1 {

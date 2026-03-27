@@ -63,9 +63,9 @@ type VM struct {
 	UpdatedAt    string `json:"updated_at"`
 }
 
-// ListVMsResponse represents the response from listing all VMs.
-type ListVMsResponse struct {
-	Data    []VM    `json:"data"`
+// ListResponse is a generic paginated list response returned by the API.
+type ListResponse[T any] struct {
+	Data    []T     `json:"data"`
 	HasMore bool    `json:"has_more"`
 	Cursor  *string `json:"cursor,omitempty"`
 }
@@ -106,13 +106,6 @@ type EgressRuleRequest struct {
 	Comment string `json:"comment,omitempty"`
 }
 
-// ListEgressRulesResponse represents the paginated response from listing egress rules.
-type ListEgressRulesResponse struct {
-	Data    []EgressRule `json:"data"`
-	HasMore bool         `json:"has_more"`
-	Cursor  *string      `json:"cursor,omitempty"`
-}
-
 // EgressAuditEvent represents a single egress audit log entry.
 type EgressAuditEvent struct {
 	ID        string    `json:"id"`
@@ -124,13 +117,6 @@ type EgressAuditEvent struct {
 	Allowed   bool      `json:"allowed"`
 	Verdict   string    `json:"verdict,omitempty"`
 	Mode      string    `json:"mode,omitempty"`
-}
-
-// ListAuditEgressResponse is the paginated response for GET /audit/egress.
-type ListAuditEgressResponse struct {
-	Data    []EgressAuditEvent `json:"data"`
-	HasMore bool               `json:"has_more"`
-	Cursor  string             `json:"cursor,omitempty"`
 }
 
 // AuditEgressParams contains query parameters for the audit egress endpoint.
@@ -172,13 +158,6 @@ type UpdateSecretRequest struct {
 	Comment string   `json:"comment,omitempty"`
 }
 
-// ListSecretsResponse represents the paginated response from listing secrets.
-type ListSecretsResponse struct {
-	Data    []Secret `json:"data"`
-	HasMore bool     `json:"has_more"`
-	Cursor  *string  `json:"cursor,omitempty"`
-}
-
 // Snapshot represents a snapshot resource returned by the API.
 type Snapshot struct {
 	ID                     string `json:"id"`
@@ -192,13 +171,6 @@ type Snapshot struct {
 // CreateSnapshotRequest represents the request payload for creating a snapshot.
 type CreateSnapshotRequest struct {
 	Label string `json:"label,omitempty"`
-}
-
-// ListSnapshotsResponse represents the paginated response from listing snapshots.
-type ListSnapshotsResponse struct {
-	Data    []Snapshot `json:"data"`
-	HasMore bool       `json:"has_more"`
-	Cursor  *string    `json:"cursor,omitempty"`
 }
 
 // DeviceCodeResponse represents the response from POST /auth/device/code
@@ -281,13 +253,6 @@ type UpsertEnvVarRequest struct {
 	Value string `json:"value"`
 }
 
-// ListEnvVarsResponse represents the paginated response from listing env vars.
-type ListEnvVarsResponse struct {
-	Data    []EnvVar `json:"data"`
-	HasMore bool     `json:"has_more"`
-	Cursor  *string  `json:"cursor,omitempty"`
-}
-
 // EnvVarPut creates or updates an env var by key.
 func (c *Client) EnvVarPut(key string, value string) (*EnvVar, error) {
 	req := UpsertEnvVarRequest{Value: value}
@@ -325,13 +290,13 @@ func (c *Client) EnvVarGet(key string) (*EnvVar, error) {
 }
 
 // EnvVarList lists all env vars.
-func (c *Client) EnvVarList() (*ListEnvVarsResponse, error) {
+func (c *Client) EnvVarList() (*ListResponse[EnvVar], error) {
 	body, err := c.makeRequest("GET", "/env", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list env vars: %w", err)
 	}
 
-	var listResp ListEnvVarsResponse
+	var listResp ListResponse[EnvVar]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -409,13 +374,13 @@ func (c *Client) GetVM(id string) (*VM, error) {
 }
 
 // ListVMs lists all VMs
-func (c *Client) ListVMs() (*ListVMsResponse, error) {
+func (c *Client) ListVMs() (*ListResponse[VM], error) {
 	body, err := c.makeRequest("GET", "/vms", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list VMs: %w", err)
 	}
 
-	var listResp ListVMsResponse
+	var listResp ListResponse[VM]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -424,7 +389,7 @@ func (c *Client) ListVMs() (*ListVMsResponse, error) {
 }
 
 // ListVMsByName lists VMs filtered by name.
-func (c *Client) ListVMsByName(name string) (*ListVMsResponse, error) {
+func (c *Client) ListVMsByName(name string) (*ListResponse[VM], error) {
 	q := url.Values{}
 	q.Set("name", name)
 	path := "/vms?" + q.Encode()
@@ -434,7 +399,7 @@ func (c *Client) ListVMsByName(name string) (*ListVMsResponse, error) {
 		return nil, fmt.Errorf("failed to list VMs by name: %w", err)
 	}
 
-	var listResp ListVMsResponse
+	var listResp ListResponse[VM]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -561,13 +526,13 @@ func (c *Client) EgressSetPolicy(mode string) error {
 }
 
 // EgressListRules lists all egress rules for the account
-func (c *Client) EgressListRules() (*ListEgressRulesResponse, error) {
+func (c *Client) EgressListRules() (*ListResponse[EgressRule], error) {
 	body, err := c.makeRequest("GET", "/egress/rules", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list egress rules: %w", err)
 	}
 
-	var listResp ListEgressRulesResponse
+	var listResp ListResponse[EgressRule]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -643,7 +608,7 @@ func (c *Client) VMEgressSetPolicy(vmID, mode string) error {
 }
 
 // AuditEgress fetches egress audit events with the given query parameters.
-func (c *Client) AuditEgress(params AuditEgressParams) (*ListAuditEgressResponse, error) {
+func (c *Client) AuditEgress(params AuditEgressParams) (*ListResponse[EgressAuditEvent], error) {
 	q := url.Values{}
 	if params.VMID != "" {
 		q.Set("vm_id", params.VMID)
@@ -674,7 +639,7 @@ func (c *Client) AuditEgress(params AuditEgressParams) (*ListAuditEgressResponse
 		return nil, fmt.Errorf("failed to fetch egress audit log: %w", err)
 	}
 
-	var auditResp ListAuditEgressResponse
+	var auditResp ListResponse[EgressAuditEvent]
 	if err := json.Unmarshal(body, &auditResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -735,13 +700,13 @@ func (c *Client) SecretsCreate(req CreateSecretRequest) (*Secret, error) {
 }
 
 // SecretsList lists all secrets.
-func (c *Client) SecretsList() (*ListSecretsResponse, error) {
+func (c *Client) SecretsList() (*ListResponse[Secret], error) {
 	body, err := c.makeRequest("GET", "/secrets", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list secrets: %w", err)
 	}
 
-	var listResp ListSecretsResponse
+	var listResp ListResponse[Secret]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -750,7 +715,7 @@ func (c *Client) SecretsList() (*ListSecretsResponse, error) {
 }
 
 // SecretsListByName lists secrets filtered by name.
-func (c *Client) SecretsListByName(name string) (*ListSecretsResponse, error) {
+func (c *Client) SecretsListByName(name string) (*ListResponse[Secret], error) {
 	q := url.Values{}
 	q.Set("name", name)
 	path := "/secrets?" + q.Encode()
@@ -760,7 +725,7 @@ func (c *Client) SecretsListByName(name string) (*ListSecretsResponse, error) {
 		return nil, fmt.Errorf("failed to list secrets by name: %w", err)
 	}
 
-	var listResp ListSecretsResponse
+	var listResp ListResponse[Secret]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -854,21 +819,14 @@ type CreatePublicKeyRequest struct {
 	PublicKey string `json:"public_key"`
 }
 
-// ListPublicKeysResponse represents the paginated response from listing public keys.
-type ListPublicKeysResponse struct {
-	Data    []PublicKey `json:"data"`
-	HasMore bool       `json:"has_more"`
-	Cursor  *string    `json:"cursor,omitempty"`
-}
-
 // PublicKeysList lists all public keys.
-func (c *Client) PublicKeysList() (*ListPublicKeysResponse, error) {
+func (c *Client) PublicKeysList() (*ListResponse[PublicKey], error) {
 	body, err := c.makeRequest("GET", "/public_keys", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list public keys: %w", err)
 	}
 
-	var listResp ListPublicKeysResponse
+	var listResp ListResponse[PublicKey]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -877,7 +835,7 @@ func (c *Client) PublicKeysList() (*ListPublicKeysResponse, error) {
 }
 
 // PublicKeysListByName lists public keys filtered by name.
-func (c *Client) PublicKeysListByName(name string) (*ListPublicKeysResponse, error) {
+func (c *Client) PublicKeysListByName(name string) (*ListResponse[PublicKey], error) {
 	q := url.Values{}
 	q.Set("name", name)
 	path := "/public_keys?" + q.Encode()
@@ -887,7 +845,7 @@ func (c *Client) PublicKeysListByName(name string) (*ListPublicKeysResponse, err
 		return nil, fmt.Errorf("failed to list public keys by name: %w", err)
 	}
 
-	var listResp ListPublicKeysResponse
+	var listResp ListResponse[PublicKey]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -989,13 +947,6 @@ type CreateAgentRequest struct {
 	AgentArgs string `json:"agent_args,omitempty"`
 }
 
-// ListAgentsResponse represents the paginated response from listing agents.
-type ListAgentsResponse struct {
-	Data    []Agent `json:"data"`
-	HasMore bool    `json:"has_more"`
-	Cursor  *string `json:"cursor,omitempty"`
-}
-
 // AgentsCreate creates a new agent session.
 func (c *Client) AgentsCreate(req CreateAgentRequest) (*Agent, error) {
 	reqBody, err := json.Marshal(req)
@@ -1017,13 +968,13 @@ func (c *Client) AgentsCreate(req CreateAgentRequest) (*Agent, error) {
 }
 
 // AgentsList lists all agents. Supports optional query parameters.
-func (c *Client) AgentsList() (*ListAgentsResponse, error) {
+func (c *Client) AgentsList() (*ListResponse[Agent], error) {
 	body, err := c.makeRequest("GET", "/agents", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list agents: %w", err)
 	}
 
-	var listResp ListAgentsResponse
+	var listResp ListResponse[Agent]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -1032,7 +983,7 @@ func (c *Client) AgentsList() (*ListAgentsResponse, error) {
 }
 
 // AgentsListByName lists agents filtered by name.
-func (c *Client) AgentsListByName(name string) (*ListAgentsResponse, error) {
+func (c *Client) AgentsListByName(name string) (*ListResponse[Agent], error) {
 	q := url.Values{}
 	q.Set("name", name)
 	path := "/agents?" + q.Encode()
@@ -1042,7 +993,7 @@ func (c *Client) AgentsListByName(name string) (*ListAgentsResponse, error) {
 		return nil, fmt.Errorf("failed to list agents by name: %w", err)
 	}
 
-	var listResp ListAgentsResponse
+	var listResp ListResponse[Agent]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -1121,13 +1072,13 @@ func (c *Client) SnapshotsCreate(vmID string, req CreateSnapshotRequest) (*Snaps
 }
 
 // SnapshotsList lists all snapshots across VMs.
-func (c *Client) SnapshotsList() (*ListSnapshotsResponse, error) {
+func (c *Client) SnapshotsList() (*ListResponse[Snapshot], error) {
 	body, err := c.makeRequest("GET", "/snapshots", nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list snapshots: %w", err)
 	}
 
-	var listResp ListSnapshotsResponse
+	var listResp ListResponse[Snapshot]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}
@@ -1136,14 +1087,14 @@ func (c *Client) SnapshotsList() (*ListSnapshotsResponse, error) {
 }
 
 // SnapshotsListByVM lists snapshots for a specific VM.
-func (c *Client) SnapshotsListByVM(vmID string) (*ListSnapshotsResponse, error) {
+func (c *Client) SnapshotsListByVM(vmID string) (*ListResponse[Snapshot], error) {
 	path := fmt.Sprintf("/vms/%s/snapshots", vmID)
 	body, err := c.makeRequest("GET", path, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list snapshots: %w", err)
 	}
 
-	var listResp ListSnapshotsResponse
+	var listResp ListResponse[Snapshot]
 	if err := json.Unmarshal(body, &listResp); err != nil {
 		return nil, fmt.Errorf("failed to decode response: %w", err)
 	}

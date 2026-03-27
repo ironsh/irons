@@ -33,7 +33,7 @@ func secretsPostRoute(secret api.Secret) route {
 
 func secretsListRoute(secrets ...api.Secret) route {
 	return route{"GET", "/secrets", func(w http.ResponseWriter, r *http.Request, body []byte) {
-		jsonResponse(w, http.StatusOK, api.ListSecretsResponse{Data: secrets})
+		jsonResponse(w, http.StatusOK, api.ListResponse[api.Secret]{Data: secrets})
 	}}
 }
 
