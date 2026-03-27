@@ -77,7 +77,9 @@ Examples:
 		for _, ev := range resp.Data {
 			printEgressEvent(ev)
 		}
-		params.Cursor = resp.Cursor
+		if resp.Cursor != nil {
+			params.Cursor = *resp.Cursor
+		}
 
 		if !follow {
 			return nil
@@ -95,8 +97,8 @@ Examples:
 				fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 				return false
 			}
-			if resp.Cursor != "" {
-				params.Cursor = resp.Cursor
+			if resp.Cursor != nil {
+				params.Cursor = *resp.Cursor
 			}
 
 			if len(resp.Data) == 0 {

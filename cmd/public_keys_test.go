@@ -27,7 +27,7 @@ func publicKeysPostRoute(key api.PublicKey) route {
 
 func publicKeysListRoute(keys ...api.PublicKey) route {
 	return route{"GET", "/public_keys", func(w http.ResponseWriter, r *http.Request, body []byte) {
-		jsonResponse(w, http.StatusOK, api.ListPublicKeysResponse{Data: keys})
+		jsonResponse(w, http.StatusOK, api.ListResponse[api.PublicKey]{Data: keys})
 	}}
 }
 
