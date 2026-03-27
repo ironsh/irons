@@ -15,7 +15,8 @@ const (
 
 // Config holds the persistent CLI configuration.
 type Config struct {
-	APIKey string `yaml:"api_key,omitempty"`
+	APIKey  string `yaml:"api_key,omitempty"`
+	Harness string `yaml:"harness,omitempty"`
 }
 
 // configPath returns the path to the config file:
