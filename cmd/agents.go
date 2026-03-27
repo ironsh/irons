@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path"
 	"strings"
 	"time"
@@ -179,12 +180,84 @@ Examples:
 	},
 }
 
+// agentsSSHCmd opens a plain SSH session to an agent's VM.
+var agentsSSHCmd = &cobra.Command{
+	Use:   "ssh <name|id> [command...]",
+	Short: "SSH into an agent's VM",
+	Long: `Open an SSH session to an agent's underlying VM.
+
+Unlike 'agents attach', this gives you a plain shell rather than
+attaching to the agent's tmux session. Useful for inspecting the VM,
+tailing logs, or running one-off commands.
+
+Optionally pass a command to execute on the remote VM:
+  irons agents ssh fix-auth ls -la
+  irons agents ssh fix-auth cat /tmp/agent.log`,
+	Args: cobra.MinimumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		client := newClient()
+		showCommand, _ := cmd.Flags().GetBool("command")
+		forceTTY, _ := cmd.Flags().GetBool("tty")
+
+		agent, err := resolveAgentFull(client, args[0])
+		if err != nil {
+			return err
+		}
+
+		resp, err := client.SSH(agent.VMID)
+		if err != nil {
+			return fmt.Errorf("getting SSH info: %w", err)
+		}
+
+		sshArgs := []string{
+			"-p", fmt.Sprintf("%d", resp.Port),
+			"-o", "StrictHostKeyChecking=no",
+			"-o", "UserKnownHostsFile=/dev/null",
+			"-o", "LogLevel=ERROR",
+		}
+
+		if forceTTY {
+			sshArgs = append(sshArgs, "-t")
+		}
+
+		sshArgs = append(sshArgs, fmt.Sprintf("%s@%s", resp.Username, resp.Host))
+		sshArgs = append(sshArgs, args[1:]...)
+
+		if showCommand {
+			fmt.Printf("ssh")
+			for _, arg := range sshArgs {
+				fmt.Printf(" %s", arg)
+			}
+			fmt.Println()
+			return nil
+		}
+
+		fmt.Printf("Connecting to %s (%s)...\n", agent.Name, agent.ID)
+
+		sshProc := exec.Command("ssh", sshArgs...)
+		sshProc.Stdin = os.Stdin
+		sshProc.Stdout = os.Stdout
+		sshProc.Stderr = os.Stderr
+
+		if err := sshProc.Run(); err != nil {
+			return fmt.Errorf("SSH session ended: %w", err)
+		}
+
+		return nil
+	},
+}
+
 func init() {
 	rootCmd.AddCommand(agentsCmd)
 	agentsCmd.AddCommand(agentsNewCmd)
 	agentsCmd.AddCommand(agentsAttachCmd)
+	agentsCmd.AddCommand(agentsSSHCmd)
 	agentsCmd.AddCommand(agentsListCmd)
 	agentsCmd.AddCommand(agentsDestroyCmd)
+
+	// Flags for agents ssh
+	agentsSSHCmd.Flags().BoolP("command", "c", false, "Output SSH command instead of executing it")
+	agentsSSHCmd.Flags().BoolP("tty", "t", false, "Force pseudo-TTY allocation")
 
 	// Flags for agents new
 	agentsNewCmd.Flags().String("repo", "", "GitHub repo (e.g. acme/api or github.com/acme/api)")
