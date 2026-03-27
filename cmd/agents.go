@@ -5,12 +5,12 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path"
 	"strings"
 	"time"
 
 	"github.com/ironsh/irons/api"
+	"github.com/ironsh/irons/cmd/attach"
 	"github.com/ironsh/irons/config"
 	"github.com/olekukonko/tablewriter"
 	"github.com/spf13/cobra"
@@ -364,34 +364,23 @@ func waitForAgent(ctx context.Context, client *api.Client, id string) (*api.Agen
 	}
 }
 
-// sshAttachToAgent SSHes into the agent's VM and attaches to the tmux session.
-// This reuses the same SSH connection logic as `irons ssh`.
+// sshAttachToAgent establishes a Go-native SSH connection to the agent's VM,
+// attaches to the tmux session, and provides a toggleable egress monitor (Ctrl-]).
 func sshAttachToAgent(client *api.Client, agent *api.Agent) error {
 	resp, err := client.SSH(agent.VMID)
 	if err != nil {
 		return fmt.Errorf("getting SSH info: %w", err)
 	}
 
-	sshArgs := []string{
-		"-p", fmt.Sprintf("%d", resp.Port),
-		"-o", "StrictHostKeyChecking=no",
-		"-o", "UserKnownHostsFile=/dev/null",
-		"-o", "LogLevel=ERROR",
-		"-t",
-		fmt.Sprintf("%s@%s", resp.Username, resp.Host),
-		"tmux", "attach", "-t", "main",
-	}
-
-	sshProc := exec.Command("ssh", sshArgs...)
-	sshProc.Stdin = os.Stdin
-	sshProc.Stdout = os.Stdout
-	sshProc.Stderr = os.Stderr
-
-	if err := sshProc.Run(); err != nil {
-		return fmt.Errorf("SSH session ended: %w", err)
-	}
-
-	return nil
+	return attach.Run(attach.Config{
+		Host:      resp.Host,
+		Port:      resp.Port,
+		Username:  resp.Username,
+		Command:   "tmux attach -t main",
+		VMID:      agent.VMID,
+		AgentName: agent.Name,
+		Client:    client,
+	})
 }
 
 // resolveAgentFull resolves a name or ID to the full Agent struct.
