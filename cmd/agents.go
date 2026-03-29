@@ -20,13 +20,10 @@ import (
 
 // agentsNewOpts holds the parsed flags for agents new.
 type agentsNewOpts struct {
-	Repo       string
-	Branch     string
-	Prompt     string
-	PromptFile string
-	Name       string
-	NoAttach   bool
-	AgentArgs  string
+	Repo     string
+	Branch   string
+	Name     string
+	NoAttach bool
 }
 
 // agentsCmd is the parent command for agent subcommands.
@@ -44,42 +41,25 @@ agent inside a tmux session that you can attach to via SSH.`,
 
 // agentsNewCmd creates a new agent session.
 var agentsNewCmd = &cobra.Command{
-	Use:   "new [flags] [-- agent-args...]",
+	Use:   "new [flags]",
 	Short: "Create a new agent session",
 	Long: `Create an agent session: boot a VM, clone a repo, start the agent in tmux, and SSH in.
-
-Everything after -- is passed through to the agent process as arguments.
 
 Examples:
   irons agents new --repo acme/api
   irons agents new --repo github.com/acme/api --name fix-auth
-  irons agents new --repo acme/api --prompt "fix the failing auth tests"
-  irons agents new --repo acme/api --prompt-file ./task.md
-  irons agents new --repo acme/api -- --remote
   irons agents new --repo acme/api --no-attach`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		repo, _ := cmd.Flags().GetString("repo")
 		branch, _ := cmd.Flags().GetString("branch")
-		prompt, _ := cmd.Flags().GetString("prompt")
-		promptFile, _ := cmd.Flags().GetString("prompt-file")
 		name, _ := cmd.Flags().GetString("name")
 		noAttach, _ := cmd.Flags().GetBool("no-attach")
 
-		// Capture agent args (everything after --)
-		var agentArgs string
-		dashIdx := cmd.ArgsLenAtDash()
-		if dashIdx >= 0 {
-			agentArgs = strings.Join(args[dashIdx:], " ")
-		}
-
 		return runAgentsNew(cmd.Context(), agentsNewOpts{
-			Repo:       repo,
-			Branch:     branch,
-			Prompt:     prompt,
-			PromptFile: promptFile,
-			Name:       name,
-			NoAttach:   noAttach,
-			AgentArgs:  agentArgs,
+			Repo:     repo,
+			Branch:   branch,
+			Name:     name,
+			NoAttach: noAttach,
 		})
 	},
 }
@@ -262,8 +242,6 @@ func init() {
 	// Flags for agents new
 	agentsNewCmd.Flags().String("repo", "", "GitHub repo (e.g. acme/api or github.com/acme/api)")
 	agentsNewCmd.Flags().String("branch", "", "Branch to checkout (defaults to repo default)")
-	agentsNewCmd.Flags().String("prompt", "", "Initial task for the agent")
-	agentsNewCmd.Flags().String("prompt-file", "", "Path to file containing initial prompt")
 	agentsNewCmd.Flags().String("name", "", "Session name (derived from repo if omitted)")
 	agentsNewCmd.Flags().Bool("no-attach", false, "Create the session but don't SSH in")
 	agentsNewCmd.MarkFlagRequired("repo")
@@ -285,32 +263,20 @@ func runAgentsNew(ctx context.Context, opts agentsNewOpts) error {
 		name = deriveNameFromRepo(opts.Repo)
 	}
 
-	// Step 3: Read prompt file if provided.
-	prompt := opts.Prompt
-	if opts.PromptFile != "" {
-		data, err := os.ReadFile(opts.PromptFile)
-		if err != nil {
-			return fmt.Errorf("reading prompt file: %w", err)
-		}
-		prompt = string(data)
-	}
-
-	// Step 4: Determine harness from config.
+	// Step 3: Determine harness from config.
 	harness := "claude"
 	if cfg, err := config.Load(); err == nil && cfg.Harness != "" {
 		harness = cfg.Harness
 	}
 
-	// Step 5: Create agent (with retry on name collision).
+	// Step 4: Create agent (with retry on name collision).
 	fmt.Println("✓ Credentials verified")
 
 	req := api.CreateAgentRequest{
-		Name:      name,
-		Repo:      opts.Repo,
-		Branch:    opts.Branch,
-		Harness:   harness,
-		Prompt:    prompt,
-		AgentArgs: opts.AgentArgs,
+		Name:    name,
+		Repo:    opts.Repo,
+		Branch:  opts.Branch,
+		Harness: harness,
 	}
 
 	agent, err := createAgentWithRetry(client, req)
@@ -318,7 +284,7 @@ func runAgentsNew(ctx context.Context, opts agentsNewOpts) error {
 		return fmt.Errorf("creating agent: %w", err)
 	}
 
-	// Step 6: Wait for agent to be running.
+	// Step 5: Wait for agent to be running.
 	agent, err = waitForAgent(ctx, client, agent.ID)
 	if err != nil {
 		return err
@@ -333,7 +299,7 @@ func runAgentsNew(ctx context.Context, opts agentsNewOpts) error {
 		return nil
 	}
 
-	// Step 7: Attach via SSH + tmux.
+	// Step 6: Attach via SSH + tmux.
 	fmt.Println("  Connecting...")
 	return sshAttachToAgent(client, agent)
 }

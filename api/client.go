@@ -925,26 +925,22 @@ func (c *Client) ResolvePublicKey(idOrName string) (string, error) {
 
 // Agent represents an agent session resource returned by the API.
 type Agent struct {
-	ID        string   `json:"id"`
-	Name      string   `json:"name"`
-	Repo      string   `json:"repo"`
-	Branch    string   `json:"branch,omitempty"`
-	Harness   string   `json:"harness,omitempty"`
-	Prompt    string   `json:"prompt,omitempty"`
-	AgentArgs string `json:"agent_args,omitempty"`
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Repo      string `json:"repo"`
+	Branch    string `json:"branch,omitempty"`
+	Harness   string `json:"harness,omitempty"`
 	Status    string `json:"status"`
-	VMID      string   `json:"vm_id"`
-	CreatedAt string   `json:"created_at"`
+	VMID      string `json:"vm_id"`
+	CreatedAt string `json:"created_at"`
 }
 
 // CreateAgentRequest represents the request payload for creating an agent.
 type CreateAgentRequest struct {
-	Name      string   `json:"name"`
-	Repo      string   `json:"repo"`
-	Branch    string   `json:"branch,omitempty"`
-	Harness   string   `json:"harness,omitempty"`
-	Prompt    string   `json:"prompt,omitempty"`
-	AgentArgs string `json:"agent_args,omitempty"`
+	Name    string `json:"name"`
+	Repo    string `json:"repo"`
+	Branch  string `json:"branch,omitempty"`
+	Harness string `json:"harness,omitempty"`
 }
 
 // AgentsCreate creates a new agent session.
