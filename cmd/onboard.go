@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -9,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ironsh/irons/api"
@@ -163,10 +163,10 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 
 	// Create an example secret so the user can see it via printenv.
 	fmt.Println("  Creating an example secret...")
-	if err := storeSecret(client, "example-secret", "HELLO", "world", false); err != nil {
+	if err := storeSecret(client, "example-secret", "SAMPLE_SECRET", "iron-sh-rocks", false); err != nil {
 		return fmt.Errorf("creating example secret: %w", err)
 	}
-	fmt.Println("  \u2713 Stored HELLO=world in iron.sh secret store.")
+	fmt.Println("  \u2713 Stored SAMPLE_SECRET in iron.sh secret store.")
 	fmt.Println()
 
 	// Read the SSH public key for VM creation.
@@ -184,32 +184,60 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 		return fmt.Errorf("creating VM: %w", err)
 	}
 
-	// Wait for the VM to be ready.
-	if err := waitForVMCond(ctx, client, vm.ID, statusAndDetailEq("running", "ready")); err != nil {
-		return err
+	// Wait for the VM to be ready (inline to control indentation).
+	fmt.Printf("  Waiting for VM '%s'", vm.ID)
+	deadline := time.Now().Add(pollTimeout)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		if time.Now().After(deadline) {
+			fmt.Println()
+			return fmt.Errorf("timed out after %s waiting for VM '%s'", pollTimeout, vm.ID)
+		}
+		resp, err := client.GetVM(vm.ID)
+		if err != nil {
+			fmt.Print(".")
+		} else if resp.Status == "failed" {
+			fmt.Println()
+			return fmt.Errorf("VM '%s' entered failed state", vm.ID)
+		} else if statusAndDetailEq("running", "ready")(resp) {
+			fmt.Println()
+			break
+		} else {
+			fmt.Print(".")
+		}
+		select {
+		case <-ctx.Done():
+			fmt.Println()
+			return fmt.Errorf("cancelled while waiting for VM '%s': %w", vm.ID, ctx.Err())
+		case <-ticker.C:
+		}
 	}
 	fmt.Printf("  \u2713 VM '%s' is ready!\n", vmName)
 	fmt.Println()
 
-	fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
-	fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
-	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
+	fmt.Printf("  %sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
+	fmt.Printf("  %svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
+	fmt.Printf("  %sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
 	fmt.Println()
-	fmt.Println("  Try running `printenv` to see your secret inside the VM.")
+	fmt.Println("  Try running `echo $SAMPLE_SECRET` to see your proxied secret in the VM.")
 	fmt.Println()
-	fmt.Print("  Press Enter to connect...")
+	tap.Text(ctx, tap.TextOptions{
+		Message: "Press Enter to connect",
+	})
+	fmt.Println()
 
-	// Wait for Enter.
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
-	fmt.Println()
-
-	// SSH into the VM.
+	// SSH into the VM. We use syscall.Exec to replace the process so that
+	// tap's background goroutine (which reads from /dev/tty) is killed. We
+	// also reset the terminal beforehand because go-tty disables echo and
+	// canonical mode on /dev/tty directly.
 	sshResp, err := client.SSH(vm.ID)
 	if err != nil {
 		return fmt.Errorf("getting SSH info: %w", err)
 	}
 
 	sshArgs := []string{
+		"ssh",
 		"-p", fmt.Sprintf("%d", sshResp.Port),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -219,16 +247,30 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 
 	fmt.Printf("  Connecting to %s@%s:%d...\n", sshResp.Username, sshResp.Host, sshResp.Port)
 
-	sshProc := exec.Command("ssh", sshArgs...)
-	sshProc.Stdin = os.Stdin
-	sshProc.Stdout = os.Stdout
-	sshProc.Stderr = os.Stderr
-
-	if err := sshProc.Run(); err != nil {
-		return fmt.Errorf("SSH session ended: %w", err)
+	sshBin, err := exec.LookPath("ssh")
+	if err != nil {
+		return fmt.Errorf("ssh not found: %w", err)
 	}
 
-	return nil
+	// Reset /dev/tty to sane mode — go-tty (used by tap) opens it directly
+	// and disables echo/canonical mode.
+	restoreTerminal()
+
+	// Replace the process with ssh. This never returns on success.
+	return syscall.Exec(sshBin, sshArgs, os.Environ())
+}
+
+// restoreTerminal resets /dev/tty to sane defaults. tap's go-tty library opens
+// /dev/tty directly (not os.Stdin) and puts it in raw mode.
+func restoreTerminal() {
+	f, err := os.Open("/dev/tty")
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	cmd := exec.Command("stty", "sane")
+	cmd.Stdin = f
+	cmd.Run()
 }
 
 // readSSHPublicKey finds and reads the user's SSH public key.
@@ -255,6 +297,7 @@ func readSSHPublicKey() ([]byte, error) {
 	// Fallback — if onboardSSHKey generated one, it should be here.
 	return os.ReadFile(filepath.Join(homeDir, ".ssh", "id_ed25519.pub"))
 }
+
 
 // onboardAccount handles Step 1: iron.sh account authentication.
 func onboardAccount(ctx context.Context) error {
