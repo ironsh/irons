@@ -365,8 +365,7 @@ func checkOnboardingSecrets(client *api.Client) error {
 	}
 
 	hasGitHub := secretNames[SecretGitHubAgent]
-	hasClaude := secretNames[SecretClaudeAPIKey] ||
-		(secretNames[SecretClaudeOAuthAcc] && secretNames[SecretClaudeOAuthRef])
+	hasClaude := secretNames[SecretClaudeAPIKey]
 
 	if hasGitHub && hasClaude {
 		return nil

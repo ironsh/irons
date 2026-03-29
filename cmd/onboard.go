@@ -2,13 +2,11 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
@@ -57,20 +55,6 @@ func printBanner() {
 		fmt.Printf("%s%s%s%s%s\n", boldWhite, bannerLeft[i], orange, bannerRight[i], reset)
 	}
 	fmt.Println()
-}
-
-// claudeCredentials represents the OAuth credentials stored by Claude Code.
-type claudeCredentials struct {
-	ClaudeAIOAuth *claudeOAuth `json:"claudeAiOauth,omitempty"`
-}
-
-type claudeOAuth struct {
-	AccessToken      string   `json:"accessToken"`
-	RefreshToken     string   `json:"refreshToken"`
-	ExpiresAt        int64    `json:"expiresAt"`
-	Scopes           []string `json:"scopes"`
-	SubscriptionType string   `json:"subscriptionType,omitempty"`
-	RateLimitTier    string   `json:"rateLimitTier,omitempty"`
 }
 
 var onboardCmd = &cobra.Command{
@@ -438,10 +422,8 @@ func onboardAgentProvider(ctx context.Context, client *api.Client, refresh bool)
 
 // Secret names used during onboarding and credential checks.
 const (
-	SecretGitHubAgent    = "agent-github-agent-token"
-	SecretClaudeOAuthAcc = "agent-claude-oauth-access-token"
-	SecretClaudeOAuthRef = "agent-claude-oauth-refresh-token"
-	SecretClaudeAPIKey   = "agent-claude-api-key"
+	SecretGitHubAgent  = "agent-github-agent-token"
+	SecretClaudeAPIKey = "agent-claude-api-key"
 )
 
 func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) error {
@@ -449,86 +431,33 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 	fmt.Println("Claude Code")
 
 	if !refresh {
-		if claudeCodeSecretsExist(client) {
+		resp, err := client.SecretsListByName(SecretClaudeAPIKey)
+		if err == nil && len(resp.Data) > 0 {
 			fmt.Println("  \u2713 Already configured.")
 			fmt.Println()
 			return nil
 		}
 	}
 
-	// Collect all available credentials from local sources.
-	type claudeCandidate struct {
-		oauth  *claudeOAuth // non-nil for OAuth credentials
-		apiKey string       // non-empty for API key
-		source string       // human-readable source
-	}
-	var candidates []claudeCandidate
-
-	// 1. Claude Code OAuth (keychain on macOS, file on Linux).
-	if creds, source, err := findClaudeOAuthCredentials(); err == nil && creds.ClaudeAIOAuth != nil {
-		oauth := creds.ClaudeAIOAuth
-		if oauth.AccessToken != "" && time.Now().UnixMilli() < oauth.ExpiresAt {
-			candidates = append(candidates, claudeCandidate{
-				oauth:  oauth,
-				source: source,
-			})
-		}
-	}
-
-	// 2. $ANTHROPIC_API_KEY
+	// Check if $ANTHROPIC_API_KEY is set locally.
+	var apiKey string
 	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		candidates = append(candidates, claudeCandidate{
-			apiKey: key,
-			source: "$ANTHROPIC_API_KEY",
-		})
-	}
-
-	// 3. $CLAUDE_CODE_OAUTH_TOKEN
-	if token := os.Getenv("CLAUDE_CODE_OAUTH_TOKEN"); token != "" {
-		// This env var contains just the access token, no refresh token.
-		candidates = append(candidates, claudeCandidate{
-			apiKey: token,
-			source: "$CLAUDE_CODE_OAUTH_TOKEN",
-		})
-	}
-
-	var selected *claudeCandidate
-
-	if len(candidates) > 0 {
-		const (
-			choicePasteKey    = -1
-			choiceClaudeLogin = -2
-			choiceSetUpLater  = -3
-		)
-		var options []tap.SelectOption[int]
-		for i, c := range candidates {
-			label := fmt.Sprintf("Use credentials from %s", c.source)
-			if c.oauth != nil {
-				label = fmt.Sprintf("Use OAuth credentials from %s", c.source)
-			}
-			options = append(options, tap.SelectOption[int]{Value: i, Label: label})
-		}
-		options = append(options,
-			tap.SelectOption[int]{Value: choicePasteKey, Label: "Paste an API key instead"},
-			tap.SelectOption[int]{Value: choiceClaudeLogin, Label: "Log in with Claude Code"},
-			tap.SelectOption[int]{Value: choiceSetUpLater, Label: "Set up later"},
-		)
+		fmt.Printf("  Found API key from $ANTHROPIC_API_KEY.\n")
+		fmt.Println()
 
 		choice := tap.Select(ctx, tap.SelectOptions[int]{
-			Message: "Choose credentials",
-			Options: options,
+			Message: "Choose an option",
+			Options: []tap.SelectOption[int]{
+				{Value: 1, Label: "Use this API key"},
+				{Value: 2, Label: "Paste a different API key"},
+				{Value: 3, Label: "Set up later"},
+			},
 		})
 
-		switch {
-		case choice >= 0:
-			selected = &candidates[choice]
-		case choice == choiceClaudeLogin:
-			oauth, err := runClaudeLogin()
-			if err != nil {
-				return err
-			}
-			selected = &claudeCandidate{oauth: oauth, source: "Claude Code login"}
-		case choice == choiceSetUpLater:
+		switch choice {
+		case 1:
+			apiKey = key
+		case 3:
 			fmt.Println()
 			fmt.Println("  ⚠ Warning: Claude credentials won't be proxied to agents by default.")
 			fmt.Println("  Run `irons onboard --refresh` later to configure them.")
@@ -543,19 +472,11 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 			Message: "Choose an option",
 			Options: []tap.SelectOption[int]{
 				{Value: 1, Label: "Paste an API key"},
-				{Value: 2, Label: "Log in with Claude Code"},
-				{Value: 3, Label: "Set up later"},
+				{Value: 2, Label: "Set up later"},
 			},
 		})
 
-		switch choice {
-		case 2:
-			oauth, err := runClaudeLogin()
-			if err != nil {
-				return err
-			}
-			selected = &claudeCandidate{oauth: oauth, source: "Claude Code login"}
-		case 3:
+		if choice == 2 {
 			fmt.Println()
 			fmt.Println("  ⚠ Warning: Claude credentials won't be proxied to agents by default.")
 			fmt.Println("  Run `irons onboard --refresh` later to configure them.")
@@ -564,9 +485,8 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 		}
 	}
 
-	// If still no creds, prompt for API key.
-	if selected == nil {
-		key := tap.Password(ctx, tap.PasswordOptions{
+	if apiKey == "" {
+		apiKey = tap.Password(ctx, tap.PasswordOptions{
 			Message: "Paste an Anthropic API key",
 			Validate: func(s string) error {
 				if strings.TrimSpace(s) == "" {
@@ -575,139 +495,19 @@ func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) er
 				return nil
 			},
 		})
-		selected = &claudeCandidate{apiKey: strings.TrimSpace(key), source: "manual"}
+		apiKey = strings.TrimSpace(apiKey)
 	}
 
 	fmt.Println()
-	fmt.Println("  Storing in iron.sh secret store.")
+	fmt.Println("  Storing as ANTHROPIC_API_KEY in iron.sh secret store.")
 
-	if selected.oauth != nil {
-		// Store access and refresh tokens as separate secrets (proxy-swappable).
-		if err := storeSecret(client, SecretClaudeOAuthAcc, "CLAUDE_OAUTH_ACCESS_TOKEN", selected.oauth.AccessToken, refresh); err != nil {
-			return err
-		}
-		if err := storeSecret(client, SecretClaudeOAuthRef, "CLAUDE_OAUTH_REFRESH_TOKEN", selected.oauth.RefreshToken, refresh); err != nil {
-			return err
-		}
-
-		// Store non-sensitive OAuth metadata as an env var.
-		metadata, _ := json.Marshal(map[string]any{
-			"expiresAt":        selected.oauth.ExpiresAt,
-			"scopes":           selected.oauth.Scopes,
-			"subscriptionType": selected.oauth.SubscriptionType,
-			"rateLimitTier":    selected.oauth.RateLimitTier,
-		})
-		if _, err := client.EnvVarPut("CLAUDE_OAUTH_METADATA", string(metadata)); err != nil {
-			return fmt.Errorf("storing OAuth metadata: %w", err)
-		}
-	} else {
-		if err := storeSecret(client, SecretClaudeAPIKey, "ANTHROPIC_API_KEY", selected.apiKey, refresh); err != nil {
-			return err
-		}
+	if err := storeSecret(client, SecretClaudeAPIKey, "ANTHROPIC_API_KEY", apiKey, refresh); err != nil {
+		return err
 	}
 
 	fmt.Println("  \u2713 Stored.")
 	fmt.Println()
 	return nil
-}
-
-// claudeCodeSecretsExist returns true if any Claude Code secrets are already
-// configured (either an API key secret or OAuth token secrets).
-func claudeCodeSecretsExist(client *api.Client) bool {
-	for _, name := range []string{SecretClaudeAPIKey, SecretClaudeOAuthAcc} {
-		resp, err := client.SecretsListByName(name)
-		if err == nil && len(resp.Data) > 0 {
-			return true
-		}
-	}
-	return false
-}
-
-// findClaudeOAuthCredentials reads Claude Code OAuth credentials from the
-// platform-appropriate store. On macOS it queries the Keychain; on Linux it
-// reads ~/.claude/.credentials.json (or $CLAUDE_CONFIG_DIR/.credentials.json).
-// Returns the parsed credentials and a human-readable source string.
-func findClaudeOAuthCredentials() (*claudeCredentials, string, error) {
-	if runtime.GOOS == "darwin" {
-		return readClaudeCredentialsFromKeychain()
-	}
-	return readClaudeCredentialsFromDisk()
-}
-
-func readClaudeCredentialsFromKeychain() (*claudeCredentials, string, error) {
-	out, err := exec.Command("security", "find-generic-password",
-		"-s", "Claude Code-credentials",
-		"-w",
-	).Output()
-	if err != nil {
-		return nil, "", fmt.Errorf("reading keychain: %w", err)
-	}
-
-	var creds claudeCredentials
-	if err := json.Unmarshal(out, &creds); err != nil {
-		return nil, "", fmt.Errorf("parsing keychain data: %w", err)
-	}
-	return &creds, "macOS Keychain", nil
-}
-
-func readClaudeCredentialsFromDisk() (*claudeCredentials, string, error) {
-	path := claudeCredentialsPath()
-	if path == "" {
-		return nil, "", fmt.Errorf("could not determine credentials path")
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, "", err
-	}
-	var creds claudeCredentials
-	if err := json.Unmarshal(data, &creds); err != nil {
-		return nil, "", err
-	}
-	return &creds, path, nil
-}
-
-func claudeCredentialsPath() string {
-	if dir := os.Getenv("CLAUDE_CONFIG_DIR"); dir != "" {
-		return filepath.Join(dir, ".credentials.json")
-	}
-	homeDir, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return filepath.Join(homeDir, ".claude", ".credentials.json")
-}
-
-func runClaudeLogin() (*claudeOAuth, error) {
-	claudeBin, err := exec.LookPath("claude")
-	if err != nil {
-		return nil, fmt.Errorf("Claude Code CLI not found. Install it with `npm install -g @anthropic-ai/claude-code`, then run `irons onboard` again")
-	}
-
-	fmt.Println()
-	fmt.Println("  Launching Claude Code login...")
-	fmt.Println()
-
-	cmd := exec.Command(claudeBin, "auth", "login")
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("claude auth login failed: %w", err)
-	}
-
-	fmt.Println()
-	fmt.Println("  \u2713 Claude Code authenticated.")
-
-	// Re-read credentials from the platform-appropriate store.
-	creds, _, err := findClaudeOAuthCredentials()
-	if err != nil {
-		return nil, fmt.Errorf("reading Claude Code credentials after login: %w", err)
-	}
-	if creds.ClaudeAIOAuth == nil || creds.ClaudeAIOAuth.AccessToken == "" {
-		return nil, fmt.Errorf("no OAuth credentials found after Claude Code login")
-	}
-
-	return creds.ClaudeAIOAuth, nil
 }
 
 // onboardSSHKey handles Step 4: SSH key registration.
