@@ -200,7 +200,7 @@ POSTHOG_API_KEY="phc_yO8qr8j1QKsm60VrzE08lRg8wbEYc1SZTcTTtfaOvH1"
   -H "Content-Type: application/json" \
   -d "{
     \"api_key\": \"${POSTHOG_API_KEY}\",
-    \"event\": \"install\",
+    \"event\": \"irons_installed\",
     \"distinct_id\": \"$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null || echo anonymous)\",
     \"properties\": {
       \"version\": \"${VERSION}\",
