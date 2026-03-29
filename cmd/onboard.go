@@ -227,9 +227,6 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 		return fmt.Errorf("ssh not found: %w", err)
 	}
 
-	// Reset terminal — go-tty opens /dev/tty and puts it in raw mode.
-	restoreTerminal()
-
 	// Replace the process with ssh. This never returns on success.
 	return syscall.Exec(sshBin, sshArgs, os.Environ())
 }
@@ -259,19 +256,6 @@ func readSSHPublicKey() ([]byte, error) {
 	return os.ReadFile(filepath.Join(homeDir, ".ssh", "id_ed25519.pub"))
 }
 
-// restoreTerminal resets /dev/tty to sane defaults. tap's go-tty library opens
-// /dev/tty directly (not os.Stdin) and puts it in raw mode, so we need to
-// target /dev/tty explicitly.
-func restoreTerminal() {
-	f, err := os.Open("/dev/tty")
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	cmd := exec.Command("stty", "sane")
-	cmd.Stdin = f
-	cmd.Run()
-}
 
 // onboardAccount handles Step 1: iron.sh account authentication.
 func onboardAccount(ctx context.Context) error {
