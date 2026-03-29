@@ -119,8 +119,8 @@ func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
 	choice := tap.Select(ctx, tap.SelectOptions[int]{
 		Message: "Choose an option",
 		Options: []tap.SelectOption[int]{
-			{Value: 1, Label: "Start coding with an agent"},
-			{Value: 2, Label: "Create a VM to poke around"},
+			{Value: 1, Label: "I'm ready to start coding: set up an agent harness against one of my repos"},
+			{Value: 2, Label: "I'm just poking around: set up an example VM"},
 		},
 	})
 
