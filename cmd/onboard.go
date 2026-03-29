@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -82,7 +83,8 @@ func init() {
 
 // runOnboard is the standalone onboarding logic, callable from both the cobra
 // command and from other code (e.g. agents new credential check).
-// When promptAgent is true, the user is prompted to start their first agent.
+// When promptAgent is true, the user is prompted to choose between starting
+// an agent or creating a VM to explore.
 func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
 	printBanner()
 
@@ -94,18 +96,51 @@ func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
 	// Build client now that we have an API key.
 	client := newClient()
 
-	// Step 2: GitHub token
+	// Step 2: SSH key (needed for both agent and SSH paths)
+	if err := onboardSSHKey(client); err != nil {
+		return err
+	}
+
+	if !promptAgent {
+		// Called from agents new credential check — just ensure GitHub token exists.
+		if err := onboardGitHub(ctx, client, refresh); err != nil {
+			return err
+		}
+		if err := onboardAgentProvider(ctx, refresh); err != nil {
+			return err
+		}
+		return nil
+	}
+
+	// Step 3: Ask what the user wants to do.
+	fmt.Println("What do you want to do?")
+	fmt.Println()
+
+	choice := tap.Select(ctx, tap.SelectOptions[int]{
+		Message: "Choose an option",
+		Options: []tap.SelectOption[int]{
+			{Value: 1, Label: "I'm ready to start coding: set up an agent harness against one of my repos"},
+			{Value: 2, Label: "I'm just poking around: set up an example VM"},
+		},
+	})
+
+	switch choice {
+	case 1:
+		return onboardAgentPath(ctx, client, refresh)
+	case 2:
+		return onboardSSHPath(ctx, client)
+	}
+
+	return nil
+}
+
+// onboardAgentPath handles the agent flow: GitHub PAT, harness, then create agent.
+func onboardAgentPath(ctx context.Context, client *api.Client, refresh bool) error {
 	if err := onboardGitHub(ctx, client, refresh); err != nil {
 		return err
 	}
 
-	// Step 3: Agent provider
 	if err := onboardAgentProvider(ctx, refresh); err != nil {
-		return err
-	}
-
-	// Step 4: SSH key
-	if err := onboardSSHKey(client); err != nil {
 		return err
 	}
 
@@ -115,15 +150,110 @@ func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
 	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
 	fmt.Println()
 
-	if promptAgent {
-		// Step 5: Prompt to create first agent.
-		if err := promptFirstAgent(ctx); err != nil {
-			// Non-fatal: user can always run agents new later.
-			fmt.Printf("Run 'irons agents new --repo <url>' when you're ready.\n")
-		}
+	if err := promptFirstAgent(ctx); err != nil {
+		fmt.Printf("Run 'irons agents new --repo <url>' when you're ready.\n")
 	}
 
 	return nil
+}
+
+// onboardSSHPath creates an example secret and a VM, then drops the user into SSH.
+func onboardSSHPath(ctx context.Context, client *api.Client) error {
+	fmt.Println()
+
+	// Create an example secret so the user can see it via printenv.
+	fmt.Println("  Creating an example secret...")
+	if err := storeSecret(client, "example-secret", "HELLO", "world", false); err != nil {
+		return fmt.Errorf("creating example secret: %w", err)
+	}
+	fmt.Println("  \u2713 Stored HELLO=world in iron.sh secret store.")
+	fmt.Println()
+
+	// Read the SSH public key for VM creation.
+	keyContent, err := readSSHPublicKey()
+	if err != nil {
+		return fmt.Errorf("reading SSH key: %w", err)
+	}
+
+	// Create the VM.
+	vmName := "explore"
+	fmt.Printf("  Creating VM '%s'...\n", vmName)
+
+	vm, err := client.Create(keyContent, vmName, "")
+	if err != nil {
+		return fmt.Errorf("creating VM: %w", err)
+	}
+
+	// Wait for the VM to be ready.
+	if err := waitForVMCond(ctx, client, vm.ID, statusAndDetailEq("running", "ready")); err != nil {
+		return err
+	}
+	fmt.Printf("  \u2713 VM '%s' is ready!\n", vmName)
+	fmt.Println()
+
+	fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
+	fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
+	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
+	fmt.Println()
+	fmt.Println("  Try running `printenv` to see your secret inside the VM.")
+	fmt.Println()
+	fmt.Print("  Press Enter to connect...")
+
+	// Wait for Enter.
+	bufio.NewReader(os.Stdin).ReadBytes('\n')
+	fmt.Println()
+
+	// SSH into the VM.
+	sshResp, err := client.SSH(vm.ID)
+	if err != nil {
+		return fmt.Errorf("getting SSH info: %w", err)
+	}
+
+	sshArgs := []string{
+		"-p", fmt.Sprintf("%d", sshResp.Port),
+		"-o", "StrictHostKeyChecking=no",
+		"-o", "UserKnownHostsFile=/dev/null",
+		"-o", "LogLevel=ERROR",
+		fmt.Sprintf("%s@%s", sshResp.Username, sshResp.Host),
+	}
+
+	fmt.Printf("  Connecting to %s@%s:%d...\n", sshResp.Username, sshResp.Host, sshResp.Port)
+
+	sshProc := exec.Command("ssh", sshArgs...)
+	sshProc.Stdin = os.Stdin
+	sshProc.Stdout = os.Stdout
+	sshProc.Stderr = os.Stderr
+
+	if err := sshProc.Run(); err != nil {
+		return fmt.Errorf("SSH session ended: %w", err)
+	}
+
+	return nil
+}
+
+// readSSHPublicKey finds and reads the user's SSH public key.
+func readSSHPublicKey() ([]byte, error) {
+	homeDir, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("determining home directory: %w", err)
+	}
+
+	candidates := []string{
+		filepath.Join(homeDir, ".ssh", "id_ed25519.pub"),
+		filepath.Join(homeDir, ".ssh", "id_ed25519_sk.pub"),
+		filepath.Join(homeDir, ".ssh", "id_ecdsa.pub"),
+		filepath.Join(homeDir, ".ssh", "id_ecdsa_sk.pub"),
+		filepath.Join(homeDir, ".ssh", "id_rsa.pub"),
+	}
+
+	for _, c := range candidates {
+		if fileExists(c) {
+			return os.ReadFile(c)
+		}
+	}
+
+	// Fallback — if onboardSSHKey generated one, it should be here.
+	return os.ReadFile(filepath.Join(homeDir, ".ssh", "id_ed25519.pub"))
 }
 
 // onboardAccount handles Step 1: iron.sh account authentication.
