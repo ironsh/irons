@@ -61,7 +61,7 @@ var onboardCmd = &cobra.Command{
 	Use:   "onboard",
 	Short: "Set up your iron.sh account and credentials",
 	Long: `First-run setup flow that ensures you have an iron.sh account,
-GitHub credentials, agent provider credentials, and an SSH key registered.
+GitHub credentials, an agent provider selected, and an SSH key registered.
 
 This command is idempotent — running it multiple times is safe. Each step
 checks whether it's already been completed before doing anything.
@@ -100,7 +100,7 @@ func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
 	}
 
 	// Step 3: Agent provider
-	if err := onboardAgentProvider(ctx, client, refresh); err != nil {
+	if err := onboardAgentProvider(ctx, refresh); err != nil {
 		return err
 	}
 
@@ -386,129 +386,54 @@ func onboardGitHub(ctx context.Context, client *api.Client, refresh bool) error 
 	return nil
 }
 
-// onboardAgentProvider handles Step 3: Agent provider selection and credential storage.
-func onboardAgentProvider(ctx context.Context, client *api.Client, refresh bool) error {
+// onboardAgentProvider handles Step 3: Agent provider (harness) selection.
+func onboardAgentProvider(ctx context.Context, refresh bool) error {
 	fmt.Println("Agent Provider")
 
-	for {
-		choice := tap.Select(ctx, tap.SelectOptions[int]{
-			Message: "Which agent provider do you want to use?",
-			Options: []tap.SelectOption[int]{
-				{Value: 1, Label: "Claude Code"},
-				{Value: 2, Label: "Codex (coming soon)"},
-			},
-		})
-
-		if choice == 2 {
-			fmt.Println("  Codex support is coming soon. Choose Claude Code for now.")
-			fmt.Println()
-			continue
-		}
-		break
-	}
-
-	// Save the harness choice to config.
 	cfg, err := config.Load()
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
-	cfg.Harness = "claude"
+
+	if !refresh && cfg.Harness != "" {
+		fmt.Printf("  \u2713 Using %s.\n", cfg.Harness)
+		fmt.Println()
+		return nil
+	}
+
+	type harnessOption struct {
+		value string
+		label string
+	}
+	harnesses := []harnessOption{
+		{value: "claude", label: "Claude Code"},
+		{value: "codex", label: "Codex"},
+	}
+
+	var options []tap.SelectOption[string]
+	for _, h := range harnesses {
+		options = append(options, tap.SelectOption[string]{Value: h.value, Label: h.label})
+	}
+
+	choice := tap.Select(ctx, tap.SelectOptions[string]{
+		Message: "Which agent provider do you want to use?",
+		Options: options,
+	})
+
+	cfg.Harness = choice
 	if err := config.Save(cfg); err != nil {
 		return fmt.Errorf("saving config: %w", err)
 	}
 
-	return onboardClaudeCode(ctx, client, refresh)
+	fmt.Printf("  \u2713 Set to %s.\n", choice)
+	fmt.Println()
+	return nil
 }
 
 // Secret names used during onboarding and credential checks.
 const (
-	SecretGitHubAgent  = "agent-github-agent-token"
-	SecretClaudeAPIKey = "agent-claude-api-key"
+	SecretGitHubAgent = "agent-github-agent-token"
 )
-
-func onboardClaudeCode(ctx context.Context, client *api.Client, refresh bool) error {
-	fmt.Println()
-	fmt.Println("Claude Code")
-
-	if !refresh {
-		resp, err := client.SecretsListByName(SecretClaudeAPIKey)
-		if err == nil && len(resp.Data) > 0 {
-			fmt.Println("  \u2713 Already configured.")
-			fmt.Println()
-			return nil
-		}
-	}
-
-	// Check if $ANTHROPIC_API_KEY is set locally.
-	var apiKey string
-	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
-		fmt.Printf("  Found API key from $ANTHROPIC_API_KEY.\n")
-		fmt.Println()
-
-		choice := tap.Select(ctx, tap.SelectOptions[int]{
-			Message: "Choose an option",
-			Options: []tap.SelectOption[int]{
-				{Value: 1, Label: "Use this API key"},
-				{Value: 2, Label: "Paste a different API key"},
-				{Value: 3, Label: "Set up later"},
-			},
-		})
-
-		switch choice {
-		case 1:
-			apiKey = key
-		case 3:
-			fmt.Println()
-			fmt.Println("  ⚠ Warning: Claude credentials won't be proxied to agents by default.")
-			fmt.Println("  Run `irons onboard --refresh` later to configure them.")
-			fmt.Println()
-			return nil
-		}
-	} else {
-		fmt.Println("  No credentials found.")
-		fmt.Println()
-
-		choice := tap.Select(ctx, tap.SelectOptions[int]{
-			Message: "Choose an option",
-			Options: []tap.SelectOption[int]{
-				{Value: 1, Label: "Paste an API key"},
-				{Value: 2, Label: "Set up later"},
-			},
-		})
-
-		if choice == 2 {
-			fmt.Println()
-			fmt.Println("  ⚠ Warning: Claude credentials won't be proxied to agents by default.")
-			fmt.Println("  Run `irons onboard --refresh` later to configure them.")
-			fmt.Println()
-			return nil
-		}
-	}
-
-	if apiKey == "" {
-		apiKey = tap.Password(ctx, tap.PasswordOptions{
-			Message: "Paste an Anthropic API key",
-			Validate: func(s string) error {
-				if strings.TrimSpace(s) == "" {
-					return fmt.Errorf("API key is required")
-				}
-				return nil
-			},
-		})
-		apiKey = strings.TrimSpace(apiKey)
-	}
-
-	fmt.Println()
-	fmt.Println("  Storing as ANTHROPIC_API_KEY in iron.sh secret store.")
-
-	if err := storeSecret(client, SecretClaudeAPIKey, "ANTHROPIC_API_KEY", apiKey, refresh); err != nil {
-		return err
-	}
-
-	fmt.Println("  \u2713 Stored.")
-	fmt.Println()
-	return nil
-}
 
 // onboardSSHKey handles Step 4: SSH key registration.
 func onboardSSHKey(client *api.Client) error {

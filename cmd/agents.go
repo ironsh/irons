@@ -364,14 +364,11 @@ func checkOnboardingSecrets(client *api.Client) error {
 		secretNames[s.Name] = true
 	}
 
-	hasGitHub := secretNames[SecretGitHubAgent]
-	hasClaude := secretNames[SecretClaudeAPIKey]
-
-	if hasGitHub && hasClaude {
-		return nil
+	if !secretNames[SecretGitHubAgent] {
+		return fmt.Errorf("missing required credentials. Run `irons onboard` first")
 	}
 
-	return fmt.Errorf("missing required credentials. Run `irons onboard` first")
+	return nil
 }
 
 // createAgentWithRetry attempts to create an agent, retrying with a
