@@ -85,6 +85,10 @@ func init() {
 // When promptAgent is true, the user is prompted to choose between starting
 // an agent or creating a VM to explore.
 func runOnboard(ctx context.Context, refresh, promptAgent bool) error {
+	// Save terminal state before tap/bubbletea prompts modify it.
+	// We restore it before launching SSH so the session works correctly.
+	saveTerminalState()
+
 	printBanner()
 
 	// Step 1: Account
@@ -201,6 +205,10 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 	})
 	fmt.Println()
 
+	// Restore terminal to cooked mode. tap/bubbletea may leave the terminal
+	// in raw mode which breaks the SSH session (no echo, no line editing).
+	restoreTerminal()
+
 	// SSH into the VM.
 	sshResp, err := client.SSH(vm.ID)
 	if err != nil {
@@ -252,6 +260,25 @@ func readSSHPublicKey() ([]byte, error) {
 
 	// Fallback — if onboardSSHKey generated one, it should be here.
 	return os.ReadFile(filepath.Join(homeDir, ".ssh", "id_ed25519.pub"))
+}
+
+// savedTermState holds the terminal state captured before any tap prompts.
+var savedTermState *term.State
+
+// saveTerminalState captures the current terminal state so it can be restored
+// later. This is needed because tap/bubbletea may leave the terminal in raw
+// mode, which breaks subsequent interactive programs like SSH.
+func saveTerminalState() {
+	if state, err := term.GetState(int(os.Stdin.Fd())); err == nil {
+		savedTermState = state
+	}
+}
+
+// restoreTerminal restores the terminal to the state saved by saveTerminalState.
+func restoreTerminal() {
+	if savedTermState != nil {
+		term.Restore(int(os.Stdin.Fd()), savedTermState)
+	}
 }
 
 // onboardAccount handles Step 1: iron.sh account authentication.
