@@ -163,10 +163,10 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 
 	// Create an example secret so the user can see it via printenv.
 	fmt.Println("  Creating an example secret...")
-	if err := storeSecret(client, "example-secret", "HELLO", "world", false); err != nil {
+	if err := storeSecret(client, "example-secret", "SAMPLE_SECRET", "iron-sh-rocks", false); err != nil {
 		return fmt.Errorf("creating example secret: %w", err)
 	}
-	fmt.Println("  \u2713 Stored HELLO=world in iron.sh secret store.")
+	fmt.Println("  \u2713 Stored SAMPLE_SECRET in iron.sh secret store.")
 	fmt.Println()
 
 	// Read the SSH public key for VM creation.
@@ -195,7 +195,7 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 	fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
 	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
 	fmt.Println()
-	fmt.Println("  Try running `printenv` to see your secret inside the VM.")
+	fmt.Println("  Try running `echo $SAMPLE_SECRET` to see your proxied secret in the VM.")
 	fmt.Println()
 	tap.Text(ctx, tap.TextOptions{
 		Message: "Press Enter to connect",
