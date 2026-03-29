@@ -196,7 +196,7 @@ fi
 # Send a single install event to PostHog. Runs in the background and
 # silently ignores failures so it never blocks or breaks the installer.
 POSTHOG_API_KEY="phc_yO8qr8j1QKsm60VrzE08lRg8wbEYc1SZTcTTtfaOvH1"
-curl -fsS --max-time 5 -o /dev/null \
+(curl -fsS --max-time 5 -o /dev/null \
   -H "Content-Type: application/json" \
   -d "{
     \"api_key\": \"${POSTHOG_API_KEY}\",
@@ -208,6 +208,6 @@ curl -fsS --max-time 5 -o /dev/null \
       \"arch\": \"${ARCH_NAME}\"
     }
   }" \
-  "https://us.i.posthog.com/capture/" >/dev/null 2>&1 &
+  "https://us.i.posthog.com/capture/" >/dev/null 2>&1 &)
 
 printf "\n  Happy sandboxing! 🏖️\n\n"
