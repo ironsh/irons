@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
@@ -199,8 +198,15 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 	fmt.Println()
 	fmt.Print("  Press Enter to connect...")
 
-	// Wait for Enter.
-	bufio.NewReader(os.Stdin).ReadBytes('\n')
+	// Wait for Enter. Read directly from stdin one byte at a time to avoid
+	// buffering issues with the tap/bubbletea raw-mode terminal.
+	buf := make([]byte, 1)
+	for {
+		n, err := os.Stdin.Read(buf)
+		if err != nil || (n > 0 && buf[0] == '\n') {
+			break
+		}
+	}
 	fmt.Println()
 
 	// SSH into the VM.
