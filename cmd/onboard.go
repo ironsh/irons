@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/ironsh/irons/api"
@@ -201,17 +202,17 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 	})
 	fmt.Println()
 
-	// Restore terminal to cooked mode. tap/bubbletea may leave the terminal
-	// in raw mode which breaks the SSH session (no echo, no line editing).
-	restoreTerminal()
-
-	// SSH into the VM.
+	// SSH into the VM. We use syscall.Exec to replace the process so that
+	// tap's background goroutine (which reads from /dev/tty) is killed. We
+	// also reset the terminal beforehand because go-tty disables echo and
+	// canonical mode on /dev/tty directly.
 	sshResp, err := client.SSH(vm.ID)
 	if err != nil {
 		return fmt.Errorf("getting SSH info: %w", err)
 	}
 
 	sshArgs := []string{
+		"ssh",
 		"-p", fmt.Sprintf("%d", sshResp.Port),
 		"-o", "StrictHostKeyChecking=no",
 		"-o", "UserKnownHostsFile=/dev/null",
@@ -221,16 +222,16 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 
 	fmt.Printf("  Connecting to %s@%s:%d...\n", sshResp.Username, sshResp.Host, sshResp.Port)
 
-	sshProc := exec.Command("ssh", sshArgs...)
-	sshProc.Stdin = os.Stdin
-	sshProc.Stdout = os.Stdout
-	sshProc.Stderr = os.Stderr
-
-	if err := sshProc.Run(); err != nil {
-		return fmt.Errorf("SSH session ended: %w", err)
+	sshBin, err := exec.LookPath("ssh")
+	if err != nil {
+		return fmt.Errorf("ssh not found: %w", err)
 	}
 
-	return nil
+	// Reset terminal — go-tty opens /dev/tty and puts it in raw mode.
+	restoreTerminal()
+
+	// Replace the process with ssh. This never returns on success.
+	return syscall.Exec(sshBin, sshArgs, os.Environ())
 }
 
 // readSSHPublicKey finds and reads the user's SSH public key.
@@ -258,11 +259,17 @@ func readSSHPublicKey() ([]byte, error) {
 	return os.ReadFile(filepath.Join(homeDir, ".ssh", "id_ed25519.pub"))
 }
 
-// restoreTerminal resets the terminal to sane defaults. tap/bubbletea can
-// leave the terminal in raw mode which breaks interactive programs like SSH.
+// restoreTerminal resets /dev/tty to sane defaults. tap's go-tty library opens
+// /dev/tty directly (not os.Stdin) and puts it in raw mode, so we need to
+// target /dev/tty explicitly.
 func restoreTerminal() {
+	f, err := os.Open("/dev/tty")
+	if err != nil {
+		return
+	}
+	defer f.Close()
 	cmd := exec.Command("stty", "sane")
-	cmd.Stdin = os.Stdin
+	cmd.Stdin = f
 	cmd.Run()
 }
 
