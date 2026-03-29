@@ -196,17 +196,9 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 	fmt.Println()
 	fmt.Println("  Try running `printenv` to see your secret inside the VM.")
 	fmt.Println()
-	fmt.Print("  Press Enter to connect...")
-
-	// Wait for Enter. Read directly from stdin one byte at a time to avoid
-	// buffering issues with the tap/bubbletea raw-mode terminal.
-	buf := make([]byte, 1)
-	for {
-		n, err := os.Stdin.Read(buf)
-		if err != nil || (n > 0 && buf[0] == '\n') {
-			break
-		}
-	}
+	tap.Text(ctx, tap.TextOptions{
+		Message: "Press Enter to connect",
+	})
 	fmt.Println()
 
 	// SSH into the VM.
