@@ -184,16 +184,41 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 		return fmt.Errorf("creating VM: %w", err)
 	}
 
-	// Wait for the VM to be ready.
-	if err := waitForVMCond(ctx, client, vm.ID, statusAndDetailEq("running", "ready")); err != nil {
-		return err
+	// Wait for the VM to be ready (inline to control indentation).
+	fmt.Printf("  Waiting for VM '%s'", vm.ID)
+	deadline := time.Now().Add(pollTimeout)
+	ticker := time.NewTicker(pollInterval)
+	defer ticker.Stop()
+	for {
+		if time.Now().After(deadline) {
+			fmt.Println()
+			return fmt.Errorf("timed out after %s waiting for VM '%s'", pollTimeout, vm.ID)
+		}
+		resp, err := client.GetVM(vm.ID)
+		if err != nil {
+			fmt.Print(".")
+		} else if resp.Status == "failed" {
+			fmt.Println()
+			return fmt.Errorf("VM '%s' entered failed state", vm.ID)
+		} else if statusAndDetailEq("running", "ready")(resp) {
+			fmt.Println()
+			break
+		} else {
+			fmt.Print(".")
+		}
+		select {
+		case <-ctx.Done():
+			fmt.Println()
+			return fmt.Errorf("cancelled while waiting for VM '%s': %w", vm.ID, ctx.Err())
+		case <-ticker.C:
+		}
 	}
 	fmt.Printf("  \u2713 VM '%s' is ready!\n", vmName)
 	fmt.Println()
 
-	fmt.Printf("%sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
-	fmt.Printf("%svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
-	fmt.Printf("%sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
+	fmt.Printf("  %sYour credentials are encrypted at rest and injected into your VM%s\n", dim, reset)
+	fmt.Printf("  %svia iron.sh's secrets proxy. They never touch disk in plaintext.%s\n", dim, reset)
+	fmt.Printf("  %sAll VM network traffic is logged and restricted by default.%s\n", dim, reset)
 	fmt.Println()
 	fmt.Println("  Try running `echo $SAMPLE_SECRET` to see your proxied secret in the VM.")
 	fmt.Println()
@@ -227,8 +252,25 @@ func onboardSSHPath(ctx context.Context, client *api.Client) error {
 		return fmt.Errorf("ssh not found: %w", err)
 	}
 
+	// Reset /dev/tty to sane mode — go-tty (used by tap) opens it directly
+	// and disables echo/canonical mode.
+	restoreTerminal()
+
 	// Replace the process with ssh. This never returns on success.
 	return syscall.Exec(sshBin, sshArgs, os.Environ())
+}
+
+// restoreTerminal resets /dev/tty to sane defaults. tap's go-tty library opens
+// /dev/tty directly (not os.Stdin) and puts it in raw mode.
+func restoreTerminal() {
+	f, err := os.Open("/dev/tty")
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	cmd := exec.Command("stty", "sane")
+	cmd.Stdin = f
+	cmd.Run()
 }
 
 // readSSHPublicKey finds and reads the user's SSH public key.
