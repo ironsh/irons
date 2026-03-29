@@ -208,6 +208,6 @@ POSTHOG_API_KEY="phc_yO8qr8j1QKsm60VrzE08lRg8wbEYc1SZTcTTtfaOvH1"
       \"arch\": \"${ARCH_NAME}\"
     }
   }" \
-  "https://us.i.posthog.com/capture/" >/dev/null 2>&1 &)
+  "https://us.i.posthog.com/i/v0/e/" >/dev/null 2>&1 &)
 
 printf "\n  Happy sandboxing! 🏖️\n\n"
