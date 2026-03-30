@@ -74,6 +74,7 @@ type ListResponse[T any] struct {
 type SSHResponse struct {
 	Host     string `json:"host"`
 	Port     int    `json:"port"`
+	MoshPort int    `json:"mosh_port,omitempty"`
 	Username string `json:"username"`
 	Command  string `json:"command,omitempty"`
 }
