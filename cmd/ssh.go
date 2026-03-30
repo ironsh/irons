@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 
+	"github.com/ironsh/irons/api"
 	"github.com/spf13/cobra"
 )
 
@@ -26,6 +27,7 @@ Optionally, pass a command to execute on the remote VM:
 		showCommand, _ := cmd.Flags().GetBool("command")
 		strictHostKeys, _ := cmd.Flags().GetBool("strict-hostkeys")
 		forceTTY, _ := cmd.Flags().GetBool("tty")
+		useMosh, _ := cmd.Flags().GetBool("mosh")
 
 		// Create API client
 		client := newClient()
@@ -41,6 +43,10 @@ Optionally, pass a command to execute on the remote VM:
 		resp, err := client.SSH(id)
 		if err != nil {
 			return fmt.Errorf("getting SSH info: %w", err)
+		}
+
+		if useMosh {
+			return runMosh(resp, showCommand)
 		}
 
 		// Build SSH command
@@ -100,4 +106,39 @@ func init() {
 	sshCmd.Flags().BoolP("command", "c", false, "Output SSH command instead of executing it")
 	sshCmd.Flags().Bool("strict-hostkeys", false, "Enable strict host key checking (disabled by default)")
 	sshCmd.Flags().BoolP("tty", "t", false, "Force pseudo-TTY allocation (useful for interactive commands like tmux)")
+	sshCmd.Flags().Bool("mosh", false, "Connect via mosh instead of SSH")
+}
+
+func runMosh(resp *api.SSHResponse, showCommand bool) error {
+	if resp.MoshPort == 0 {
+		return fmt.Errorf("mosh is not available for this VM (no mosh_port returned)")
+	}
+
+	moshArgs := []string{
+		fmt.Sprintf("--ssh=ssh -p %d -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR", resp.Port),
+		"--port=" + fmt.Sprintf("%d", resp.MoshPort),
+		fmt.Sprintf("%s@%s", resp.Username, resp.Host),
+	}
+
+	if showCommand {
+		fmt.Printf("mosh")
+		for _, arg := range moshArgs {
+			fmt.Printf(" %s", arg)
+		}
+		fmt.Println()
+		return nil
+	}
+
+	fmt.Printf("Connecting via mosh to %s@%s (port %d)...\n", resp.Username, resp.Host, resp.MoshPort)
+
+	moshCmd := exec.Command("mosh", moshArgs...)
+	moshCmd.Stdin = os.Stdin
+	moshCmd.Stdout = os.Stdout
+	moshCmd.Stderr = os.Stderr
+
+	if err := moshCmd.Run(); err != nil {
+		return fmt.Errorf("mosh command failed: %w", err)
+	}
+
+	return nil
 }
