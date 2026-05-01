@@ -1,5 +1,7 @@
 # irons
 
+> **Deprecation notice:** `irons` is deprecated. Hosted iron.sh VMs will be shut down on **May 31, 2026**. For network egress controls, use `iron-proxy` instead, and run your own compute via a sandbox or VM provider of your choice.
+
 `irons` is a CLI for spinning up egress-secured cloud VMs designed for AI coding agents. Create isolated, SSH-accessible environments with fine-grained control over outbound network traffic — so you can give an agent a real machine without giving it unfettered internet access.
 
 ## Quick Start
